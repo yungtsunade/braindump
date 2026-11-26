@@ -68,7 +68,12 @@ input:focus,textarea.f:focus{border-color:var(--ink)}
 .tap{background:none;border:0;padding:0;margin:0;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:44px;display:flex;flex-direction:column;justify-content:center}
 .tap>span:first-child{display:block}
 .tap:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-.row.done .rt>span:first-child{text-decoration:line-through;color:var(--faint)}
+.row.done .rt>span:first-child,.row.struck .rt>span:first-child{text-decoration:line-through;color:var(--faint)}
+.row.struck{touch-action:pan-y;user-select:none;-webkit-user-select:none;background:#fff;position:relative}
+.row.struck .sub{color:var(--faint)}
+.row.drag{transition:none}
+.row.fly{transition:transform .22s ease-in,opacity .22s ease-in}
+@media (prefers-reduced-motion:reduce){.row.fly{transition:none}}
 .sub{display:block;font-size:14px;color:var(--soft);margin-top:2px}
 .mi{color:var(--soft);display:grid;place-items:center}
 .cb{width:26px;height:26px;flex:0 0 26px;border:1.5px solid var(--ink);border-radius:50%;background:#fff;color:#fff;cursor:pointer;padding:0;display:grid;place-items:center}
@@ -301,11 +306,11 @@ function vLists(){
  }else{
   const L=S.lists.find(l=>l.id===S.cur);
   const inL=S.items.filter(i=>i.lists.includes(L.id)&&(i.status==='open'||(i.status==='done'&&isToday(i.doneAt))));
-  const dn=inL.filter(i=>i.status==='done').length,full=L.max&&cnt(L)>=L.max;
+  const dn=inL.filter(i=>i.status==='done'||i.struck).length,full=L.max&&cnt(L)>=L.max;
   const cand=sorted(open.filter(i=>!i.lists.includes(L.id)));
   if(inL.length)$('#hs').textContent=dn+' von '+inL.length+' erledigt';
   body=`${inL.length?`<div class="prog" role="img" aria-label="${dn} von ${inL.length} erledigt"><i style="width:${Math.round(dn/inL.length*100)}%"></i></div>
-   <div class="rows">${sorted(inL.filter(i=>i.status==='open')).concat(inL.filter(i=>i.status==='done')).map(i=>row(i,'list')).join('')}</div>`:'<p class="empty">Noch leer. Hol dir unten etwas aus der Masterliste.</p>'}${qa}
+   <div class="rows">${sorted(inL.filter(i=>i.status==='open')).map(i=>row(i,'list')).join('')}</div>`:'<p class="empty">Noch leer. Hol dir unten etwas aus der Masterliste.</p>'}${qa}
    <div class="sec"><h2>Aus der Masterliste holen</h2>
    ${full?`<p class="txt">${esc(L.name)} ist voll. Erst etwas erledigen, dann nachlegen.</p>`:cand.length?`<div>${cand.map(i=>`<div class="pick">${markIc(i)}<span class="rt">${esc(i.text)}${subOf(i)?`<span class="sub">${esc(subOf(i))}</span>`:''}</span><button class="add" data-act="addTo" data-id="${i.id}" data-v="${L.id}" aria-label="Zu ${esc(L.name)} hinzufügen">+</button></div>`).join('')}</div>`:'<p class="txt">Nichts mehr da, alles ist schon in dieser Liste.</p>'}</div>
    ${L.id!=='heute'?`<div class="end"><button class="btn link" data-act="delList">${U.confirm==='list'?'Wirklich löschen?':'Liste löschen'}</button></div>`:''}`;
@@ -320,10 +325,12 @@ function row(i,ctx){
   const ls=ctx==='master'?S.lists.filter(l=>!i.lists.includes(l.id)).map(l=>`<button class="btn out" data-act="addTo" data-id="${i.id}" data-v="${l.id}">Zu ${esc(l.name)}</button>`).join(''):`<button class="btn out" data-act="rmFrom" data-id="${i.id}">Aus Liste nehmen</button>`;
   const cal=(i.mark==='circle'||i.mark==='star')?`<a class="btn out" href="${esc(calLink(i))}" target="_blank" rel="noopener">Kalender</a>`:'';
   const full=i.mark==='next'?`<button class="btn out" data-act="fullDone" data-id="${i.id}">Ganze Aufgabe erledigt</button>`:'';
-  acts=`<div class="acts">${ls}${cal}${full}<button class="btn" data-act="del" data-id="${i.id}">${U.confirm===i.id?'Wirklich löschen?':'Löschen'}</button></div>`;
+  const fin=i.struck?`<button class="btn" data-act="finishItem" data-id="${i.id}">Abschließen</button>`:'';
+  acts=`<div class="acts">${fin}${ls}${cal}${full}<button class="btn" data-act="del" data-id="${i.id}">${U.confirm===i.id?'Wirklich löschen?':'Löschen'}</button></div>`;
  }
- return `<div class="row ${done?'done':''}"><button class="cb ${done?'on':''}" data-act="toggle" data-id="${i.id}" aria-label="${done?'Wieder öffnen':'Abhaken'}">${done?I.check():''}</button>
-  <button class="rt tap" data-act="plan" data-id="${i.id}" ${done?'disabled':''}><span>${esc(i.text)}</span>${sub?`<span class="sub">${esc(sub)}</span>`:''}</button>${markIc(i)}
+ const st=!done&&i.struck,on=done||st;
+ return `<div class="row ${done?'done':''} ${st?'struck':''}" ${st?`data-swipe="${i.id}"`:''}><button class="cb ${on?'on':''}" data-act="${done?'toggle':'strike'}" data-id="${i.id}" aria-label="${done?'Wieder öffnen':st?'Nicht mehr abhaken':'Abhaken'}">${on?I.check():''}</button>
+  <button class="rt tap" data-act="plan" data-id="${i.id}" ${on?'disabled':''}><span>${esc(i.text)}</span>${st?'<span class="sub">Nach rechts wischen zum Abschließen</span>':sub?`<span class="sub">${esc(sub)}</span>`:''}</button>${st?'':markIc(i)}
   <button class="ic" data-act="more" data-id="${i.id}" aria-label="Aktionen" aria-expanded="${U.open===i.id}">${I.dots()}</button></div>${acts}`;
 }
 
@@ -354,6 +361,25 @@ function vOpt(){
  <div class="sec"><h2>Alles löschen</h2><div><button class="btn" data-act="wipe">${U.confirm==='wipe'?'Wirklich alles löschen?':'Alle Daten löschen'}</button></div></div>`);
 }
 
+function complete(it){
+ delete it.struck;
+ if(it.mark==='next'){
+  S.items.push({id:uid(),kind:'step',parent:it.id,text:it.next,of:it.text,created:Date.now(),status:'done',doneAt:Date.now(),mark:null,lists:[]});
+  it.mark=null;delete it.next;it.replan=true;toast('Schritt erledigt. Plane den nächsten.')}
+ else{it.status='done';it.doneAt=Date.now();toast('Erledigt. Ab ins Beweisglas.')}
+}
+/* Wischen */
+let sw=null,swallow=false;
+document.addEventListener('pointerdown',e=>{const r=e.target.closest('[data-swipe]');if(!r||e.button>0)return;sw={r,x:e.clientX,y:e.clientY,dx:0,on:false,id:e.pointerId}});
+document.addEventListener('pointermove',e=>{if(!sw||e.pointerId!==sw.id)return;const dx=e.clientX-sw.x,dy=e.clientY-sw.y;
+ if(!sw.on){if(Math.abs(dy)>10&&Math.abs(dy)>Math.abs(dx)){sw=null;return}if(dx>10&&dx>Math.abs(dy)){sw.on=true;sw.r.classList.add('drag');try{sw.r.setPointerCapture(e.pointerId)}catch(_){}}else return}
+ sw.dx=Math.max(0,dx);sw.r.style.transform=`translateX(${sw.dx}px)`;sw.r.style.opacity=String(Math.max(.2,1-sw.dx/sw.r.offsetWidth))});
+const swEnd=e=>{if(!sw||e.pointerId!==sw.id)return;const {r,dx,on}=sw;sw=null;if(!on)return;swallow=true;setTimeout(()=>swallow=false,0);
+ r.classList.remove('drag');r.classList.add('fly');
+ if(dx>r.offsetWidth*.35){r.style.transform='translateX(110%)';r.style.opacity='0';
+  setTimeout(()=>{const it=find(r.dataset.swipe);if(it){complete(it);save();render()}},220)}
+ else{r.style.transform='';r.style.opacity='';setTimeout(()=>r.classList.remove('fly'),230)}};
+document.addEventListener('pointerup',swEnd);document.addEventListener('pointercancel',swEnd);
 /* ---------- AKTIONEN ---------- */
 const A={
  ov:()=>{ovSet(!U.ov)},
@@ -388,14 +414,13 @@ const A={
  del:el=>{const id=el.dataset.id;
   if(S.tab!=='sort'&&U.confirm!==id){U.confirm=id;render();return}
   S.items=S.items.filter(i=>i.id!==id);S.undo=S.undo.filter(x=>x!==id);U.confirm=null;U.open=null;U.panel=null;save();render()},
+ strike:el=>{const it=find(el.dataset.id);if(!it)return;it.struck=!it.struck;if(!it.struck)delete it.struck;U.open=null;save();vLists()},
+ finishItem:el=>{const it=find(el.dataset.id);if(it){complete(it);U.open=null;save();render()}},
  toggle:el=>{const it=find(el.dataset.id);if(!it)return;
   if(it.kind==='step'){const p=find(it.parent);if(p&&p.status==='open'&&!p.mark){p.mark='next';p.next=it.text;delete p.replan}S.items=S.items.filter(x=>x.id!==it.id);U.open=null;save();render();return}
-  if(it.status==='done'){it.status='open';delete it.doneAt}
-  else if(it.mark==='next'){
-   S.items.push({id:uid(),kind:'step',parent:it.id,text:it.next,of:it.text,created:Date.now(),status:'done',doneAt:Date.now(),mark:null,lists:[]});
-   it.mark=null;delete it.next;it.replan=true;toast('Schritt erledigt. Plane den nächsten.')}
-  else{it.status='done';it.doneAt=Date.now();toast('Erledigt. Ab ins Beweisglas.')}
+  if(it.status==='done'){it.status='open';delete it.doneAt}else complete(it);
   U.open=null;save();render()},
+
  more:el=>{U.open=U.open===el.dataset.id?null:el.dataset.id;U.confirm=null;vLists()},
  list:el=>{S.cur=el.dataset.v;if(U.qaOpen)U.qaFocus=true;U.open=null;U.confirm=null;save();vLists()},
  qa:()=>{if(!U.qaOpen){U.qaOpen=true;U.qaFocus=true;vLists();return}
@@ -420,7 +445,7 @@ const A={
   S.items=d.items;S.lists=d.lists.some(l=>l.id==='heute')?d.lists:[{id:'heute',name:'Heute',max:5}].concat(d.lists);save();toast('Wiederhergestellt');vOpt()}catch(e){toast('Das ist keine gültige Sicherung')}},
  wipe:()=>{if(U.confirm!=='wipe'){U.confirm='wipe';vOpt();return}S=fresh();S.tab='opt';U.confirm=null;save();render();toast('Alles gelöscht')}
 };
-document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el||el.disabled)return;const f=A[el.dataset.act];if(f)f(el,e)});
+document.addEventListener('click',e=>{if(swallow){e.preventDefault();return}const el=e.target.closest('[data-act]');if(!el||el.disabled)return;const f=A[el.dataset.act];if(f)f(el,e)});
 document.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.pick;if(k){U.pick[k]=e.target.value;vSort()}});
 document.addEventListener('keydown',e=>{if(e.key!=='Enter')return;
  if(e.target.id==='nx'){e.preventDefault();A.saveMark()}
