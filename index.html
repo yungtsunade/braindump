@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <style>
 /* VOICE: freundlich, ruhig, verspielt – Writy-Familie
    IDEA: ein Pixel-Notizblock, der Gedanken parkt
@@ -95,6 +95,29 @@ body[data-look=nacht] nav button.on{color:#fff}
 #toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--paper);font:9px/1.4 var(--ui);padding:10px 14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
 #toast.s{opacity:1}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
+/* Dump: leere weiße Seite */
+.tg{display:none}
+body.blank{background:#fff;background-image:none;color:#1a1a1a;text-shadow:none;font-family:'Source Serif 4',Georgia,serif}
+body.blank header{display:none}
+body.blank .app{max-width:none}
+body.blank main{padding:0;overflow:hidden}
+body.blank #ta{max-width:680px;margin:0 auto;padding:72px 24px 120px;font:20px/1.7 'Source Serif 4',Georgia,serif;color:#1a1a1a;caret-color:#1a1a1a;min-height:0;height:100%}
+body.blank #ta::placeholder{color:#c4c4c4}
+body.blank .tg{display:grid;place-items:center;position:fixed;top:max(12px,env(safe-area-inset-top));right:12px;width:44px;height:44px;border:0;background:transparent;color:#b5b5b5;cursor:pointer;z-index:5}
+body.blank.ov .tg{color:#1a1a1a}
+body.blank .tg:focus-visible{outline:2px solid #1a1a1a;outline-offset:2px}
+body.blank nav{display:none;position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e6e6e6;z-index:4}
+body.blank.ov nav{display:flex}
+body.blank nav button{font:13px 'Source Serif 4',Georgia,serif;color:#8a8a8a;text-transform:none;letter-spacing:0;gap:6px}
+body.blank nav button.on{background:none;color:#1a1a1a}
+body.blank nav svg{stroke-width:1.6}
+.dfoot{display:none}
+body.blank.ov .dfoot{display:flex;position:fixed;right:20px;left:20px;bottom:calc(76px + env(safe-area-inset-bottom));justify-content:flex-end;align-items:center;gap:16px;z-index:4;pointer-events:none}
+.dfoot>*{pointer-events:auto}
+.dfoot #tm{font:15px 'Source Serif 4',Georgia,serif;color:#8a8a8a}
+.fin{font:600 17px 'Source Serif 4',Georgia,serif;color:#fff;background:#1a1a1a;border:0;min-height:44px;padding:0 26px;border-radius:22px;cursor:pointer}
+.fin:focus-visible{outline:2px solid #1a1a1a;outline-offset:3px}
+body.blank #toast{background:#1a1a1a;color:#fff;font:14px 'Source Serif 4',Georgia,serif;border-radius:20px}
 </style>
 </head>
 <body>
@@ -103,6 +126,7 @@ body[data-look=nacht] nav button.on{color:#fff}
   <main id="main"></main>
   <nav id="nav" aria-label="Bereiche"></nav>
 </div>
+<button id="tg" class="tg" data-act="ov" aria-label="Leiste einblenden" aria-expanded="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg></button>
 <div id="toast" role="status"></div>
 <script>
 {
@@ -153,21 +177,20 @@ function renderNav(){$('#nav').innerHTML=TABS.map(([k,l,p])=>`<button data-act="
 
 function render(){
  document.body.dataset.look=S.look||(document.documentElement.dataset.theme==='dark'?'nacht':'tag');
+ document.body.classList.toggle('blank',S.tab==='dump');if(S.tab!=='dump')ovSet(false);
  renderNav();$('#hs').textContent='';
  ({dump:vDump,sort:vSort,lists:vLists,done:vDone,opt:vOpt})[S.tab]();
  $('#main').scrollTop=0;
 }
 
 /* ---------- DUMP ---------- */
+function ovSet(on){U.ov=on;document.body.classList.toggle('ov',on);const t=$('#tg');t.setAttribute('aria-expanded',on);t.setAttribute('aria-label',on?'Leiste ausblenden':'Leiste einblenden')}
 function vDump(){
  $('#hd').textContent='BRAIN DUMP';
- const d=new Date();
- $('#main').innerHTML=`<div class="paper px" style="flex:1">
-  <div class="bar"><i></i><i></i><i></i><span class="t">${WD[d.getDay()].toUpperCase()} ${pad(d.getDate())}.${pad(d.getMonth()+1)}.</span><span id="tm"></span></div>
-  <label for="ta" class="hint" style="position:absolute;left:-9999px">Gedanken</label>
-  <textarea id="ta" placeholder="• Was schwirrt dir im Kopf herum?" spellcheck="true"></textarea>
-  <div class="hint">Alles raus, in jeder Reihenfolge. Sortiert wird danach.</div></div>
-  <div class="end"><button class="btn mint" data-act="finish">FERTIG</button></div>`;
+ $('#main').innerHTML=`<label for="ta" style="position:absolute;left:-9999px">Gedanken</label>
+  <textarea id="ta" placeholder="Was geht dir durch den Kopf?" spellcheck="true"></textarea>
+  <div class="dfoot"><span id="tm"></span><button class="fin" data-act="finish">Fertig</button></div>`;
+ ovSet(!!U.ov);
  const ta=$('#ta');ta.value=S.draft;tick();
  ta.addEventListener('focus',()=>{if(!ta.value){ta.value='• ';S.draft=ta.value}});
  ta.addEventListener('input',()=>{
@@ -189,7 +212,7 @@ function tick(){const t=$('#tm');if(!t)return;
  if(!S.timer){t.textContent='';return}
  if(!U.timerEnd){t.textContent=S.timer+':00';return}
  const r=Math.max(0,Math.round((U.timerEnd-Date.now())/1000));
- t.textContent=r?Math.floor(r/60)+':'+pad(r%60):'ZEIT UM';t.style.color=r?'':'var(--berry)'}
+ t.textContent=r?Math.floor(r/60)+':'+pad(r%60):'Zeit um';t.style.color=r?'':'#1a1a1a'}
 setInterval(tick,1000);
 
 /* ---------- SORTIEREN ---------- */
@@ -311,10 +334,12 @@ function vOpt(){
 
 /* ---------- AKTIONEN ---------- */
 const A={
+ ov:()=>{ovSet(!U.ov)},
  tab:el=>{S.tab=el.dataset.v;U.panel=null;U.open=null;U.confirm=null;save();render()},
  finish:()=>{
   const lines=S.draft.split('\n').map(l=>l.replace(/^\s*(•|[-*]|\d+\.)\s*/,'').trim()).filter(Boolean);
   if(!lines.length){toast('Noch nichts aufgeschrieben');return}
+  ovSet(false);
   const now=Date.now();
   lines.forEach((t,k)=>S.items.push({id:uid(),text:t,created:now+k,status:'unsorted',mark:null,lists:[]}));
   S.batch=S.items.filter(i=>i.status==='unsorted').map(i=>i.id);S.undo=[];
