@@ -79,8 +79,10 @@ input:focus,textarea.f:focus{border-color:var(--ink)}
 .pick{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:17px}
 .pick:last-child{border-bottom:0}
 .pick .rt{flex:1;overflow-wrap:anywhere}
-.qa{display:flex;align-items:center;gap:12px;border-bottom:1px solid #cfcfcf}
-.qa:focus-within{border-color:var(--ink)}
+.qa{display:flex;align-items:center;gap:12px;min-height:52px}
+.qa.open{border-bottom:1px solid #cfcfcf}
+.qa.open:focus-within{border-color:var(--ink)}
+.qa .add{margin-left:-5px}
 .qa input[type=text]{border:0;font-size:18px}
 .add{width:36px;height:36px;flex:0 0 36px;border-radius:50%;border:1px solid #d4d4d4;background:#fff;color:var(--ink);font:22px/1 var(--serif);cursor:pointer;display:grid;place-items:center;padding:0}
 /* Erledigt */
@@ -283,9 +285,12 @@ function vLists(){
   +S.lists.map(l=>`<button class="chip ${S.cur===l.id?'on':''}" data-act="list" data-v="${l.id}">${esc(l.name)} ${cnt(l)}${l.max?'/'+l.max:''}</button>`).join('')
   +`<button class="chip" data-act="newList" aria-label="Neue Liste">+</button>`;
  const nl=U.newList?`<div class="panel"><label><span class="lab">Name der neuen Liste</span><input type="text" id="nl" maxlength="24" enterkeyhint="done"></label><div class="row2"><button class="btn link" data-act="newList">Abbrechen</button><button class="btn" data-act="mkList">Anlegen</button></div></div>`:'';
+ const L0=S.lists.find(l=>l.id===S.cur);
+ const qa=U.qaOpen?`<div class="qa open"><button class="add" data-act="qa" aria-label="Aufgabe hinzufügen" aria-expanded="true">+</button><label for="qa" class="sr">Neue Aufgabe</label><input type="text" id="qa" placeholder="Neue Aufgabe${L0?' für '+esc(L0.name):''}" enterkeyhint="done" autocomplete="off"></div>`
+  :`<div class="qa"><button class="add" data-act="qa" aria-label="Neue Aufgabe" aria-expanded="false">+</button></div>`;
  let body='';
  if(S.cur==='master'){
-  body=open.length?`<div class="rows">${sorted(open).map(i=>row(i,'master')).join('')}</div>`:'<p class="empty">Noch nichts geparkt. Starte mit einem Dump.</p>';
+  body=(open.length?`<div class="rows">${sorted(open).map(i=>row(i,'master')).join('')}</div>`:'<p class="empty">Noch nichts geparkt. Starte mit einem Dump oder tippe auf das Plus.</p>')+qa;
  }else{
   const L=S.lists.find(l=>l.id===S.cur);
   const inL=S.items.filter(i=>i.lists.includes(L.id)&&(i.status==='open'||(i.status==='done'&&isToday(i.doneAt))));
@@ -293,14 +298,12 @@ function vLists(){
   const cand=sorted(open.filter(i=>!i.lists.includes(L.id)));
   if(inL.length)$('#hs').textContent=dn+' von '+inL.length+' erledigt';
   body=`${inL.length?`<div class="prog" role="img" aria-label="${dn} von ${inL.length} erledigt"><i style="width:${Math.round(dn/inL.length*100)}%"></i></div>
-   <div class="rows">${sorted(inL.filter(i=>i.status==='open')).concat(inL.filter(i=>i.status==='done')).map(i=>row(i,'list')).join('')}</div>`:'<p class="empty">Noch leer. Hol dir unten etwas aus der Masterliste.</p>'}
+   <div class="rows">${sorted(inL.filter(i=>i.status==='open')).concat(inL.filter(i=>i.status==='done')).map(i=>row(i,'list')).join('')}</div>`:'<p class="empty">Noch leer. Hol dir unten etwas aus der Masterliste.</p>'}${qa}
    <div class="sec"><h2>Aus der Masterliste holen</h2>
    ${full?`<p class="txt">${esc(L.name)} ist voll. Erst etwas erledigen, dann nachlegen.</p>`:cand.length?`<div>${cand.map(i=>`<div class="pick">${markIc(i)}<span class="rt">${esc(i.text)}${subOf(i)?`<span class="sub">${esc(subOf(i))}</span>`:''}</span><button class="add" data-act="addTo" data-id="${i.id}" data-v="${L.id}" aria-label="Zu ${esc(L.name)} hinzufügen">+</button></div>`).join('')}</div>`:'<p class="txt">Nichts mehr da, alles ist schon in dieser Liste.</p>'}</div>
    ${L.id!=='heute'?`<div class="end"><button class="btn link" data-act="delList">${U.confirm==='list'?'Wirklich löschen?':'Liste löschen'}</button></div>`:''}`;
  }
- const L0=S.lists.find(l=>l.id===S.cur);
- const qa=`<div class="qa"><label for="qa" class="sr">Neue Aufgabe</label><input type="text" id="qa" placeholder="Neue Aufgabe${L0?' für '+esc(L0.name):''}" enterkeyhint="done" autocomplete="off"><button class="add" data-act="qa" aria-label="Aufgabe hinzufügen">+</button></div>`;
- page('Listen',`<div class="chips">${chips}</div>${nl}${qa}${body}`);
+ page('Listen',`<div class="chips">${chips}</div>${nl}${body}`);
  if(U.newList)$('#nl').focus();else if(U.qaFocus){U.qaFocus=false;$('#qa').focus()}
 }
 function row(i,ctx){
@@ -347,7 +350,7 @@ function vOpt(){
 /* ---------- AKTIONEN ---------- */
 const A={
  ov:()=>{ovSet(!U.ov)},
- tab:el=>{S.tab=el.dataset.v;U.planId=null;U.panel=null;U.open=null;U.confirm=null;save();render()},
+ tab:el=>{S.tab=el.dataset.v;U.planId=null;U.qaOpen=false;U.panel=null;U.open=null;U.confirm=null;save();render()},
  finish:()=>{
   const lines=S.draft.split('\n').map(l=>l.replace(/^\s*(•|[-*]|\d+\.)\s*/,'').trim()).filter(Boolean);
   if(!lines.length){toast('Noch nichts aufgeschrieben');return}
@@ -384,8 +387,9 @@ const A={
   else{it.status='done';it.doneAt=Date.now();toast('Erledigt. Ab ins Beweisglas.')}
   U.open=null;save();render()},
  more:el=>{U.open=U.open===el.dataset.id?null:el.dataset.id;U.confirm=null;vLists()},
- list:el=>{S.cur=el.dataset.v;U.open=null;U.confirm=null;save();vLists()},
- qa:()=>{const t=($('#qa').value||'').trim();if(!t){$('#qa').focus();return}
+ list:el=>{S.cur=el.dataset.v;if(U.qaOpen)U.qaFocus=true;U.open=null;U.confirm=null;save();vLists()},
+ qa:()=>{if(!U.qaOpen){U.qaOpen=true;U.qaFocus=true;vLists();return}
+  const t=($('#qa').value||'').trim();if(!t){U.qaOpen=false;vLists();return}
   const it={id:uid(),text:t,created:Date.now(),status:'open',mark:null,lists:[]};S.items.push(it);
   const L=S.lists.find(l=>l.id===S.cur);
   if(L){if(L.max&&S.items.filter(i=>i.status==='open'&&i.lists.includes(L.id)).length>=L.max)toast(L.name+' ist voll, in der Masterliste gespeichert');else it.lists.push(L.id)}
