@@ -65,6 +65,9 @@ input:focus,textarea.f:focus{border-color:var(--ink)}
 .rows{border-top:1px solid var(--line)}
 .row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);font-size:18px;line-height:1.35}
 .row .rt{flex:1;overflow-wrap:anywhere}
+.tap{background:none;border:0;padding:0;margin:0;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:44px;display:flex;flex-direction:column;justify-content:center}
+.tap>span:first-child{display:block}
+.tap:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .row.done .rt>span:first-child{text-decoration:line-through;color:var(--faint)}
 .sub{display:block;font-size:14px;color:var(--soft);margin-top:2px}
 .mi{color:var(--soft);display:grid;place-items:center}
@@ -159,7 +162,7 @@ function calLink(it){
  if(it.mark==='star'&&it.date&&it.time){const s=new Date(it.date+'T'+it.time);const e=new Date(s.getTime()+(it.dur||60)*60000);u+='&dates='+stamp(s)+'/'+stamp(e)+'&ctz='+encodeURIComponent(tz)}
  return u+'&details='+encodeURIComponent('Aus dem Brain Dump');
 }
-const subOf=it=>it.mark==='circle'?fmtD(it.date):it.mark==='star'?`${fmtD(it.date)}, ${it.time} Uhr, ${it.dur} Min.`:it.mark==='next'?'Erster Schritt: '+it.next:'';
+const subOf=it=>it.replan&&!it.mark?'Nächsten Schritt planen':it.mark==='circle'?fmtD(it.date):it.mark==='star'?`${fmtD(it.date)}, ${it.time} Uhr, ${it.dur} Min.`:it.mark==='next'?'Nächster Schritt: '+it.next:'';
 const rank=it=>({circle:0,star:1,next:2}[it.mark]??3);
 const sorted=a=>a.slice().sort((x,y)=>rank(x)-rank(y)||String(x.date||'').localeCompare(String(y.date||''))||x.created-y.created);
 const isToday=t=>t&&iso(new Date(t))===iso(new Date());
@@ -208,7 +211,24 @@ function tick(){const t=$('#tm');if(!t)return;
 setInterval(tick,1000);
 
 /* ---------- SORTIEREN ---------- */
+const curItem=()=>U.planId?find(U.planId):S.items.find(i=>i.status==='unsorted');
+function startPick(k,it){const n=new Date();n.setHours(n.getHours()+1,0,0,0);
+ const same=it&&it.mark===k;
+ U.pick={date:same&&it.date||iso(new Date()),time:same&&it.time||pad(n.getHours())+':00',dur:same&&it.dur||60,next:''}}
+function vPlan(){
+ const it=find(U.planId);if(!it){U.planId=null;S.tab='lists';return render()}
+ const mk=(k,l)=>`<button class="mk ${U.panel===k?'on':''}" data-act="panel" data-v="${k}" aria-pressed="${U.panel===k}">${I[k](26,1.6)}${l}</button>`;
+ page('Planen',`<div style="display:flex;flex-direction:column;gap:22px">
+   <div class="meta"><span>${it.mark?'Aktuell: '+esc({circle:'Datum',star:'Zeitslot',next:'Nächster Schritt'}[it.mark])+(subOf(it)?', '+esc(subOf(it)):''):'Noch ohne Markierung'}</span></div>
+   <p class="q">${esc(it.text)}</p>
+   <div class="marks">${mk('circle','Datum')}${mk('star','Zeitslot')}${mk('next','Nächster Schritt')}</div>
+  </div>
+  ${panel(it)}
+  <div class="row2"><button class="btn link" data-act="planBack">Abbrechen</button>${it.mark?'<button class="btn link" data-act="unmark">Markierung entfernen</button>':''}</div>`);
+ const t=$('#nx');if(t)t.focus();
+}
 function vSort(){
+ if(U.planId)return vPlan();
  const q=S.items.filter(i=>i.status==='unsorted');
  const total=S.batch.length,doneN=S.batch.filter(id=>{const x=find(id);return !x||x.status!=='unsorted'}).length;
  if(!q.length){page('Sortieren',`<p class="quote">Alles einsortiert. Dein Kopf ist leer, die Gedanken sind geparkt.</p>
@@ -241,11 +261,14 @@ function panel(it){
   <div class="end"><button class="btn" data-act="saveMark">Speichern</button></div></div>`;
 }
 function settle(it,mark){
+ const plan=!!U.planId;
+ delete it.date;delete it.time;delete it.dur;delete it.next;delete it.replan;
  it.status='open';it.mark=mark;
  if(mark==='circle'){it.date=U.pick.date}
  if(mark==='star'){it.date=U.pick.date;it.time=U.pick.time;it.dur=U.pick.dur}
  if(mark==='next'){it.next=U.pick.next}
- S.undo.push(it.id);U.panel=null;save();
+ if(!plan)S.undo.push(it.id);U.panel=null;save();
+ if(plan){U.planId=null;S.tab='lists';toast('Geplant')}
 }
 
 /* ---------- LISTEN ---------- */
@@ -280,10 +303,11 @@ function row(i,ctx){
  if(U.open===i.id){
   const ls=ctx==='master'?S.lists.filter(l=>!i.lists.includes(l.id)).map(l=>`<button class="btn out" data-act="addTo" data-id="${i.id}" data-v="${l.id}">Zu ${esc(l.name)}</button>`).join(''):`<button class="btn out" data-act="rmFrom" data-id="${i.id}">Aus Liste nehmen</button>`;
   const cal=(i.mark==='circle'||i.mark==='star')?`<a class="btn out" href="${esc(calLink(i))}" target="_blank" rel="noopener">Kalender</a>`:'';
-  acts=`<div class="acts">${ls}${cal}<button class="btn" data-act="del" data-id="${i.id}">${U.confirm===i.id?'Wirklich löschen?':'Löschen'}</button></div>`;
+  const full=i.mark==='next'?`<button class="btn out" data-act="fullDone" data-id="${i.id}">Ganze Aufgabe erledigt</button>`:'';
+  acts=`<div class="acts">${ls}${cal}${full}<button class="btn" data-act="del" data-id="${i.id}">${U.confirm===i.id?'Wirklich löschen?':'Löschen'}</button></div>`;
  }
  return `<div class="row ${done?'done':''}"><button class="cb ${done?'on':''}" data-act="toggle" data-id="${i.id}" aria-label="${done?'Wieder öffnen':'Abhaken'}">${done?I.check():''}</button>
-  <div class="rt"><span>${esc(i.text)}</span>${sub?`<span class="sub">${esc(sub)}</span>`:''}</div>${markIc(i)}
+  <button class="rt tap" data-act="plan" data-id="${i.id}" ${done?'disabled':''}><span>${esc(i.text)}</span>${sub?`<span class="sub">${esc(sub)}</span>`:''}</button>${markIc(i)}
   <button class="ic" data-act="more" data-id="${i.id}" aria-label="Aktionen" aria-expanded="${U.open===i.id}">${I.dots()}</button></div>${acts}`;
 }
 
@@ -296,7 +320,7 @@ function vDone(){
  let last='',list='';
  for(const i of d){const l=lbl(i.doneAt);if(l!==last){list+=`${last?'</div>':''}<div class="gl">${l}</div><div class="rows">`;last=l}
   const t=new Date(i.doneAt);
-  list+=`<div class="row"><button class="cb on" data-act="toggle" data-id="${i.id}" aria-label="Zurückholen">${I.check()}</button><span class="rt">${esc(i.text)}</span><span class="d">${pad(t.getHours())}:${pad(t.getMinutes())}</span></div>`}
+  list+=`<div class="row"><button class="cb on" data-act="toggle" data-id="${i.id}" aria-label="Zurückholen">${I.check()}</button><span class="rt">${esc(i.text)}${i.kind==='step'?`<span class="sub">Schritt zu: ${esc(i.of)}</span>`:''}</span><span class="d">${pad(t.getHours())}:${pad(t.getMinutes())}</span></div>`}
  if(last)list+='</div>';
  page('Erledigt',`<div class="big"><b>${wk}</b><span>diese Woche erledigt</span></div>
   <p class="quote">Dein Beweisglas. Lies drei davon, bevor du etwas Schweres anfängst.</p>
@@ -317,7 +341,7 @@ function vOpt(){
 /* ---------- AKTIONEN ---------- */
 const A={
  ov:()=>{ovSet(!U.ov)},
- tab:el=>{S.tab=el.dataset.v;U.panel=null;U.open=null;U.confirm=null;save();render()},
+ tab:el=>{S.tab=el.dataset.v;U.planId=null;U.panel=null;U.open=null;U.confirm=null;save();render()},
  finish:()=>{
   const lines=S.draft.split('\n').map(l=>l.replace(/^\s*(•|[-*]|\d+\.)\s*/,'').trim()).filter(Boolean);
   if(!lines.length){toast('Noch nichts aufgeschrieben');return}
@@ -327,24 +351,31 @@ const A={
   S.batch=S.items.filter(i=>i.status==='unsorted').map(i=>i.id);S.undo=[];
   S.draft='';U.timerEnd=null;S.tab='sort';save();render();
  },
- panel:el=>{const k=el.dataset.v;if(U.panel===k){U.panel=null}else{U.panel=k;
-  const n=new Date();n.setHours(n.getHours()+1,0,0,0);
-  U.pick={date:iso(new Date()),time:pad(n.getHours())+':00',dur:60,next:''}}vSort()},
+ panel:el=>{const k=el.dataset.v;if(U.panel===k){U.panel=null}else{U.panel=k;startPick(k,U.planId&&find(U.planId))}vSort()},
+ plan:el=>{U.planId=el.dataset.id;U.panel=null;U.open=null;U.confirm=null;S.tab='sort';save();render()},
+ planBack:()=>{U.planId=null;U.panel=null;S.tab='lists';save();render()},
+ unmark:()=>{const it=find(U.planId);if(it){it.mark=null;delete it.date;delete it.time;delete it.dur;delete it.next}U.planId=null;U.panel=null;S.tab='lists';save();render()},
+ fullDone:el=>{const it=find(el.dataset.id);if(!it)return;it.status='done';it.doneAt=Date.now();U.open=null;save();render();toast('Erledigt. Ab ins Beweisglas.')},
  pick:el=>{const k=el.dataset.k;U.pick[k]=k==='dur'?Number(el.dataset.v):el.dataset.v;vSort()},
- saveCal:()=>{const it=S.items.find(i=>i.status==='unsorted');if(!it)return;
+ saveCal:()=>{const it=curItem();if(!it)return;
   if(!U.pick.date){toast('Bitte ein Datum wählen');return}
-  settle(it,U.panel);setTimeout(()=>{vSort();toast('Gespeichert, Kalender geöffnet')},60)},
- saveMark:()=>{const it=S.items.find(i=>i.status==='unsorted');if(!it)return;
+  settle(it,U.panel);setTimeout(()=>{render();toast('Gespeichert, Kalender geöffnet')},60)},
+ saveMark:()=>{const it=curItem();if(!it)return;
   if(U.panel==='next'){U.pick.next=($('#nx').value||'').trim();if(!U.pick.next){toast('Schreib den ersten Schritt auf');return}}
   else if(!U.pick.date){toast('Bitte ein Datum wählen');return}
-  settle(it,U.panel);vSort()},
+  settle(it,U.panel);render()},
  nomark:()=>{const it=S.items.find(i=>i.status==='unsorted');if(!it)return;it.status='open';it.mark=null;S.undo.push(it.id);U.panel=null;save();vSort()},
  undo:()=>{const id=S.undo.pop();const it=find(id);if(it){it.status='unsorted';it.mark=null;delete it.date;delete it.time;delete it.dur;delete it.next}U.panel=null;save();vSort()},
  del:el=>{const id=el.dataset.id;
   if(S.tab!=='sort'&&U.confirm!==id){U.confirm=id;render();return}
   S.items=S.items.filter(i=>i.id!==id);S.undo=S.undo.filter(x=>x!==id);U.confirm=null;U.open=null;U.panel=null;save();render()},
  toggle:el=>{const it=find(el.dataset.id);if(!it)return;
-  if(it.status==='done'){it.status='open';delete it.doneAt}else{it.status='done';it.doneAt=Date.now();toast('Erledigt. Ab ins Beweisglas.')}
+  if(it.kind==='step'){const p=find(it.parent);if(p&&p.status==='open'&&!p.mark){p.mark='next';p.next=it.text;delete p.replan}S.items=S.items.filter(x=>x.id!==it.id);U.open=null;save();render();return}
+  if(it.status==='done'){it.status='open';delete it.doneAt}
+  else if(it.mark==='next'){
+   S.items.push({id:uid(),kind:'step',parent:it.id,text:it.next,of:it.text,created:Date.now(),status:'done',doneAt:Date.now(),mark:null,lists:[]});
+   it.mark=null;delete it.next;it.replan=true;toast('Schritt erledigt. Plane den nächsten.')}
+  else{it.status='done';it.doneAt=Date.now();toast('Erledigt. Ab ins Beweisglas.')}
   U.open=null;save();render()},
  more:el=>{U.open=U.open===el.dataset.id?null:el.dataset.id;U.confirm=null;vLists()},
  list:el=>{S.cur=el.dataset.v;U.open=null;U.confirm=null;save();vLists()},
