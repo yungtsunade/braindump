@@ -127,9 +127,10 @@ body.blank.ov .dfoot{display:flex;position:fixed;right:20px;left:20px;bottom:cal
 <script>
 {
 const KEY='braindump-v1';
-const fresh=()=>({items:[],lists:[{id:'heute',name:'Heute',max:5}],draft:'',tab:'dump',cur:'master',timer:5,batch:[],undo:[]});
+const fresh=()=>({items:[],lists:[{id:'heute',name:'Heute',max:5}],draft:'',tab:'dump',cur:'master',mode:'dump',seen:[],timer:5,batch:[],undo:[]});
 let S;try{S=Object.assign(fresh(),JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){S=fresh()}
 S.lists.forEach(l=>{if(l.id==='heute'&&l.name==='HEUTE')l.name='Heute'});delete S.look;
+if(!Array.isArray(S.seen))S.seen=[];if(!S.mode)S.mode='dump';
 S.items.forEach(i=>{if(i.status==='unsorted'&&!S.batch.includes(i.id))i.status='open'});
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const U={panel:null,pick:{},open:null,newList:false,confirm:null,timerEnd:null,ov:false};
@@ -156,7 +157,7 @@ const I={
  dots:()=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>`,
  x:()=>sv('<path d="M6 6l12 12M18 6L6 18"/>',18,1.8)
 };
-const TABS=[['dump','Dump','<path d="M4 20h4L19 9l-4-4L4 16z"/>'],['sort','Sortieren','<path d="M4 7h16M7 12h10M10 17h4"/>'],
+const TABS=[['dump','Dump','<path d="M4 20h4L19 9l-4-4L4 16z"/>'],['sort','Planen','<path d="M4 7h16M7 12h10M10 17h4"/>'],
 ['lists','Listen','<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6"/><circle cx="4.5" cy="12" r=".6"/><circle cx="4.5" cy="18" r=".6"/>'],['done','Erledigt','<path d="M5 12.5l4.5 4.5L19 7"/>'],
 ['opt','Optionen','<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>']];
 
@@ -217,7 +218,10 @@ function tick(){const t=$('#tm');if(!t)return;
 setInterval(tick,1000);
 
 /* ---------- SORTIEREN ---------- */
-const curItem=()=>U.planId?find(U.planId):S.items.find(i=>i.status==='unsorted');
+const review=()=>S.mode==='review';
+const queue=()=>review()?S.batch.map(find).filter(i=>i&&i.status==='open'&&!S.seen.includes(i.id)):S.items.filter(i=>i.status==='unsorted');
+const unmarked=()=>S.items.filter(i=>i.status==='open'&&!i.mark);
+const curItem=()=>U.planId?find(U.planId):queue()[0];
 function startPick(k,it){const n=new Date();n.setHours(n.getHours()+1,0,0,0);
  const same=it&&it.mark===k;
  U.pick={date:same&&it.date||iso(new Date()),time:same&&it.time||pad(n.getHours())+':00',dur:same&&it.dur||60,next:''}}
@@ -235,14 +239,16 @@ function vPlan(){
 }
 function vSort(){
  if(U.planId)return vPlan();
- const q=S.items.filter(i=>i.status==='unsorted');
- const total=S.batch.length,doneN=S.batch.filter(id=>{const x=find(id);return !x||x.status!=='unsorted'}).length;
- if(!q.length){page('Sortieren',`<p class="quote">Alles einsortiert. Dein Kopf ist leer, die Gedanken sind geparkt.</p>
-  <div class="row2"><button class="btn out" data-act="tab" data-v="dump">Neuer Dump</button><button class="btn" data-act="tab" data-v="lists">Zu den Listen</button></div>`);return}
+ const q=queue();
+ const total=S.batch.length,doneN=total-q.length;
+ if(!q.length){const um=unmarked().length;
+  page('Planen',`<p class="quote">${S.batch.length?'Alles eingeplant. ':''}Dein Kopf ist leer, die Gedanken sind geparkt.</p>
+  ${um?`<div class="sec"><h2>Aufgaben ohne Markierung</h2><p class="txt">${um===1?'Eine Aufgabe':um+' Aufgaben'} in der Masterliste ${um===1?'hat':'haben'} noch kein Datum, keinen Zeitslot und keinen nächsten Schritt.</p><div><button class="btn" data-act="review">Jetzt planen</button></div></div>`:''}
+  <div class="row2"><button class="btn out" data-act="tab" data-v="dump">Neuer Dump</button><button class="btn ${um?'out':''}" data-act="tab" data-v="lists">Zu den Listen</button></div>`);return}
  const it=q[0],n=Math.min(doneN+1,total||1);
  if(total)$('#hs').textContent=n+' von '+total;
  const mk=(k,l)=>`<button class="mk ${U.panel===k?'on':''}" data-act="panel" data-v="${k}" aria-pressed="${U.panel===k}">${I[k](26,1.6)}${l}</button>`;
- page('Sortieren',`${total?`<div class="prog" role="img" aria-label="${doneN} von ${total} sortiert"><i style="width:${Math.round(doneN/total*100)}%"></i></div>`:''}
+ page('Planen',`${total?`<div class="prog" role="img" aria-label="${doneN} von ${total} geplant"><i style="width:${Math.round(doneN/total*100)}%"></i></div>`:''}
   <div style="display:flex;flex-direction:column;gap:22px">
    <div class="meta"><span>Punkt ${n}${total?' von '+total:''}</span><button class="ic" data-act="del" data-id="${it.id}" aria-label="Punkt löschen" style="margin:-10px -12px -10px 0">${I.x()}</button></div>
    <p class="q">${esc(it.text)}</p>
@@ -273,7 +279,7 @@ function settle(it,mark){
  if(mark==='circle'){it.date=U.pick.date}
  if(mark==='star'){it.date=U.pick.date;it.time=U.pick.time;it.dur=U.pick.dur}
  if(mark==='next'){it.next=U.pick.next}
- if(!plan)S.undo.push(it.id);U.panel=null;save();
+ if(!plan){S.undo.push(it.id);if(review())S.seen.push(it.id)}U.panel=null;save();
  if(plan){U.planId=null;S.tab='lists';toast('Geplant')}
 }
 
@@ -360,7 +366,7 @@ const A={
   S.items.forEach(i=>{if(i.status==='unsorted')i.status='open'});
   const fresh=lines.map((t,k)=>({id:uid(),text:t,created:now+k,status:'unsorted',mark:null,lists:[]}));
   S.items.push(...fresh);
-  S.batch=fresh.map(i=>i.id);S.undo=[];
+  S.batch=fresh.map(i=>i.id);S.undo=[];S.mode='dump';S.seen=[];
   S.draft='';U.timerEnd=null;S.tab='sort';save();render();
  },
  panel:el=>{const k=el.dataset.v;if(U.panel===k){U.panel=null}else{U.panel=k;startPick(k,U.planId&&find(U.planId))}vSort()},
@@ -376,8 +382,9 @@ const A={
   if(U.panel==='next'){U.pick.next=($('#nx').value||'').trim();if(!U.pick.next){toast('Schreib den ersten Schritt auf');return}}
   else if(!U.pick.date){toast('Bitte ein Datum wählen');return}
   settle(it,U.panel);render()},
- nomark:()=>{const it=S.items.find(i=>i.status==='unsorted');if(!it)return;it.status='open';it.mark=null;S.undo.push(it.id);U.panel=null;save();vSort()},
- undo:()=>{const id=S.undo.pop();const it=find(id);if(it){it.status='unsorted';it.mark=null;delete it.date;delete it.time;delete it.dur;delete it.next}U.panel=null;save();vSort()},
+ nomark:()=>{const it=curItem();if(!it)return;if(review())S.seen.push(it.id);else{it.status='open';it.mark=null}S.undo.push(it.id);U.panel=null;save();vSort()},
+ review:()=>{S.mode='review';S.batch=sorted(unmarked()).map(i=>i.id);S.seen=[];S.undo=[];U.panel=null;save();vSort()},
+ undo:()=>{const id=S.undo.pop();const it=find(id);if(it){if(review())S.seen=S.seen.filter(x=>x!==id);else it.status='unsorted';it.mark=null;delete it.date;delete it.time;delete it.dur;delete it.next}U.panel=null;save();vSort()},
  del:el=>{const id=el.dataset.id;
   if(S.tab!=='sort'&&U.confirm!==id){U.confirm=id;render();return}
   S.items=S.items.filter(i=>i.id!==id);S.undo=S.undo.filter(x=>x!==id);U.confirm=null;U.open=null;U.panel=null;save();render()},
