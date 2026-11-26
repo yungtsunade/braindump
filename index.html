@@ -122,7 +122,7 @@ body.blank.ov .dfoot{display:flex;position:fixed;right:20px;left:20px;bottom:cal
 <script>
 {
 const KEY='braindump-v1';
-const fresh=()=>({items:[],lists:[{id:'heute',name:'Heute',max:5}],draft:'',tab:'dump',cur:'heute',timer:5,batch:[],undo:[]});
+const fresh=()=>({items:[],lists:[{id:'heute',name:'Heute',max:5}],draft:'',tab:'dump',cur:'master',timer:5,batch:[],undo:[]});
 let S;try{S=Object.assign(fresh(),JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){S=fresh()}
 S.lists.forEach(l=>{if(l.id==='heute'&&l.name==='HEUTE')l.name='Heute'});delete S.look;
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
@@ -274,7 +274,7 @@ function settle(it,mark){
 /* ---------- LISTEN ---------- */
 function vLists(){
  const open=S.items.filter(i=>i.status==='open');
- if(S.cur!=='master'&&!S.lists.some(l=>l.id===S.cur))S.cur='heute';
+ if(S.cur!=='master'&&!S.lists.some(l=>l.id===S.cur))S.cur='master';
  const cnt=l=>open.filter(i=>i.lists.includes(l.id)).length;
  const chips=`<button class="chip ${S.cur==='master'?'on':''}" data-act="list" data-v="master">Masterliste ${open.length}</button>`
   +S.lists.map(l=>`<button class="chip ${S.cur===l.id?'on':''}" data-act="list" data-v="${l.id}">${esc(l.name)} ${cnt(l)}${l.max?'/'+l.max:''}</button>`).join('')
@@ -384,7 +384,7 @@ const A={
  mkList:()=>{const n=($('#nl').value||'').trim();if(!n){toast('Gib der Liste einen Namen');return}
   const id=uid();S.lists.push({id,name:n.slice(0,24)});S.cur=id;U.newList=false;save();vLists()},
  delList:()=>{if(U.confirm!=='list'){U.confirm='list';vLists();return}
-  const id=S.cur;S.lists=S.lists.filter(l=>l.id!==id);S.items.forEach(i=>i.lists=i.lists.filter(x=>x!==id));S.cur='heute';U.confirm=null;save();vLists()},
+  const id=S.cur;S.lists=S.lists.filter(l=>l.id!==id);S.items.forEach(i=>i.lists=i.lists.filter(x=>x!==id));S.cur='master';U.confirm=null;save();vLists()},
  addTo:el=>{const it=find(el.dataset.id),L=S.lists.find(l=>l.id===el.dataset.v);if(!it||!L)return;
   if(L.max&&S.items.filter(i=>i.status==='open'&&i.lists.includes(L.id)).length>=L.max){toast(L.name+' ist voll');return}
   it.lists.push(L.id);U.open=null;save();vLists();if(S.cur==='master')toast('Zu '+L.name+' hinzugefügt')},
