@@ -79,6 +79,9 @@ input:focus,textarea.f:focus{border-color:var(--ink)}
 .pick{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:17px}
 .pick:last-child{border-bottom:0}
 .pick .rt{flex:1;overflow-wrap:anywhere}
+.qa{display:flex;align-items:center;gap:12px;border-bottom:1px solid #cfcfcf}
+.qa:focus-within{border-color:var(--ink)}
+.qa input[type=text]{border:0;font-size:18px}
 .add{width:36px;height:36px;flex:0 0 36px;border-radius:50%;border:1px solid #d4d4d4;background:#fff;color:var(--ink);font:22px/1 var(--serif);cursor:pointer;display:grid;place-items:center;padding:0}
 /* Erledigt */
 .big{display:flex;align-items:baseline;gap:14px}
@@ -295,8 +298,10 @@ function vLists(){
    ${full?`<p class="txt">${esc(L.name)} ist voll. Erst etwas erledigen, dann nachlegen.</p>`:cand.length?`<div>${cand.map(i=>`<div class="pick">${markIc(i)}<span class="rt">${esc(i.text)}${subOf(i)?`<span class="sub">${esc(subOf(i))}</span>`:''}</span><button class="add" data-act="addTo" data-id="${i.id}" data-v="${L.id}" aria-label="Zu ${esc(L.name)} hinzufügen">+</button></div>`).join('')}</div>`:'<p class="txt">Nichts mehr da, alles ist schon in dieser Liste.</p>'}</div>
    ${L.id!=='heute'?`<div class="end"><button class="btn link" data-act="delList">${U.confirm==='list'?'Wirklich löschen?':'Liste löschen'}</button></div>`:''}`;
  }
- page('Listen',`<div class="chips">${chips}</div>${nl}${body}`);
- if(U.newList)$('#nl').focus();
+ const L0=S.lists.find(l=>l.id===S.cur);
+ const qa=`<div class="qa"><label for="qa" class="sr">Neue Aufgabe</label><input type="text" id="qa" placeholder="Neue Aufgabe${L0?' für '+esc(L0.name):''}" enterkeyhint="done" autocomplete="off"><button class="add" data-act="qa" aria-label="Aufgabe hinzufügen">+</button></div>`;
+ page('Listen',`<div class="chips">${chips}</div>${nl}${qa}${body}`);
+ if(U.newList)$('#nl').focus();else if(U.qaFocus){U.qaFocus=false;$('#qa').focus()}
 }
 function row(i,ctx){
  const done=i.status==='done',sub=subOf(i);
@@ -380,6 +385,11 @@ const A={
   U.open=null;save();render()},
  more:el=>{U.open=U.open===el.dataset.id?null:el.dataset.id;U.confirm=null;vLists()},
  list:el=>{S.cur=el.dataset.v;U.open=null;U.confirm=null;save();vLists()},
+ qa:()=>{const t=($('#qa').value||'').trim();if(!t){$('#qa').focus();return}
+  const it={id:uid(),text:t,created:Date.now(),status:'open',mark:null,lists:[]};S.items.push(it);
+  const L=S.lists.find(l=>l.id===S.cur);
+  if(L){if(L.max&&S.items.filter(i=>i.status==='open'&&i.lists.includes(L.id)).length>=L.max)toast(L.name+' ist voll, in der Masterliste gespeichert');else it.lists.push(L.id)}
+  U.qaFocus=true;save();vLists()},
  newList:()=>{U.newList=!U.newList;vLists()},
  mkList:()=>{const n=($('#nl').value||'').trim();if(!n){toast('Gib der Liste einen Namen');return}
   const id=uid();S.lists.push({id,name:n.slice(0,24)});S.cur=id;U.newList=false;save();vLists()},
@@ -400,7 +410,8 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if
 document.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.pick;if(k){U.pick[k]=e.target.value;vSort()}});
 document.addEventListener('keydown',e=>{if(e.key!=='Enter')return;
  if(e.target.id==='nx'){e.preventDefault();A.saveMark()}
- if(e.target.id==='nl'){e.preventDefault();A.mkList()}});
+ if(e.target.id==='nl'){e.preventDefault();A.mkList()}
+ if(e.target.id==='qa'){e.preventDefault();A.qa()}});
 render();
 if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 }
