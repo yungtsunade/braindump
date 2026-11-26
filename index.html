@@ -130,6 +130,7 @@ const KEY='braindump-v1';
 const fresh=()=>({items:[],lists:[{id:'heute',name:'Heute',max:5}],draft:'',tab:'dump',cur:'master',timer:5,batch:[],undo:[]});
 let S;try{S=Object.assign(fresh(),JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){S=fresh()}
 S.lists.forEach(l=>{if(l.id==='heute'&&l.name==='HEUTE')l.name='Heute'});delete S.look;
+S.items.forEach(i=>{if(i.status==='unsorted'&&!S.batch.includes(i.id))i.status='open'});
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const U={panel:null,pick:{},open:null,newList:false,confirm:null,timerEnd:null,ov:false};
 const $=s=>document.querySelector(s);
@@ -356,8 +357,10 @@ const A={
   if(!lines.length){toast('Noch nichts aufgeschrieben');return}
   ovSet(false);
   const now=Date.now();
-  lines.forEach((t,k)=>S.items.push({id:uid(),text:t,created:now+k,status:'unsorted',mark:null,lists:[]}));
-  S.batch=S.items.filter(i=>i.status==='unsorted').map(i=>i.id);S.undo=[];
+  S.items.forEach(i=>{if(i.status==='unsorted')i.status='open'});
+  const fresh=lines.map((t,k)=>({id:uid(),text:t,created:now+k,status:'unsorted',mark:null,lists:[]}));
+  S.items.push(...fresh);
+  S.batch=fresh.map(i=>i.id);S.undo=[];
   S.draft='';U.timerEnd=null;S.tab='sort';save();render();
  },
  panel:el=>{const k=el.dataset.v;if(U.panel===k){U.panel=null}else{U.panel=k;startPick(k,U.planId&&find(U.planId))}vSort()},
