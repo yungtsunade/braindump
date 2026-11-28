@@ -71,8 +71,12 @@ input:focus,textarea.f:focus{border-color:var(--ink)}
 .row.done .rt>span:first-child,.row.struck .rt>span:first-child{text-decoration:line-through;color:var(--faint)}
 .row.struck{touch-action:pan-y;user-select:none;-webkit-user-select:none;background:#fff;position:relative}
 .row.struck .sub{color:var(--faint)}
-.row.drag{transition:none}
-.row.fly{transition:transform .22s ease-in,opacity .22s ease-in}
+.task{border-bottom:1px solid var(--line)}
+.task>.row{border-bottom:0}
+.task>.acts{border-bottom:0}
+[data-swipe]{touch-action:pan-y;user-select:none;-webkit-user-select:none;background:#fff;position:relative}
+.drag{transition:none}
+.step.fly,.row.fly{transition:transform .22s ease-in,opacity .22s ease-in}
 @media (prefers-reduced-motion:reduce){.row.fly{transition:none}}
 .sub{display:block;font-size:14px;color:var(--soft);margin-top:2px}
 .mi{color:var(--soft);display:grid;place-items:center}
@@ -90,6 +94,27 @@ input:focus,textarea.f:focus{border-color:var(--ink)}
 .qa .add{margin-left:-5px}
 .qa input[type=text]{border:0;font-size:18px}
 .add{width:36px;height:36px;flex:0 0 36px;border-radius:50%;border:1px solid #d4d4d4;background:#fff;color:var(--ink);font:22px/1 var(--serif);cursor:pointer;display:grid;place-items:center;padding:0}
+/* Schritte */
+.steps{padding:0 0 8px 40px;display:flex;flex-direction:column}
+.step{display:flex;align-items:center;gap:12px;min-height:42px;padding:4px 0;font-size:16px;line-height:1.35}
+.step .st{flex:1;overflow-wrap:anywhere}
+.step.done .st,.step.struck .st{text-decoration:line-through;color:var(--faint)}
+.step.struck .sub{text-decoration:none;font-size:13px;color:var(--faint)}
+.scb{width:22px;height:22px;flex:0 0 22px;border:1.5px solid var(--ink);border-radius:50%;background:#fff;color:#fff;cursor:pointer;padding:0;display:grid;place-items:center}
+.scb.on{background:var(--ink)}
+.step.done .scb{background:var(--faint);border-color:var(--faint)}
+.sp{width:22px;flex:0 0 22px;text-align:center;font-size:20px;color:var(--soft)}
+.addst{background:none;border:0;font:16px var(--serif);color:var(--soft);cursor:pointer;text-align:left}
+.nsi{border:0!important;border-bottom:1px solid var(--ink)!important;font-size:16px!important;min-height:36px!important;padding:4px 0!important}
+.psteps{padding:0 0 8px 30px;border-bottom:1px solid var(--line)}
+.pick:has(+.psteps){border-bottom:0}
+.pstep{display:flex;align-items:center;gap:12px;min-height:40px;font-size:16px}
+.pstep .rt{flex:1;overflow-wrap:anywhere}
+.add.sm{width:30px;height:30px;flex:0 0 30px;font-size:19px}
+.inl{font-size:13px;color:var(--faint);white-space:nowrap}
+.ph{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--soft)}
+.stx{font:17px/1.7 var(--serif);color:var(--ink);background:transparent;border:0;outline:none;resize:vertical;min-height:110px;padding:0;width:100%}
+.stx::placeholder{color:#b5b5b5}
 /* Erledigt */
 .big{display:flex;align-items:baseline;gap:14px}
 .big b{font-size:64px;line-height:1;font-weight:600}
@@ -159,7 +184,10 @@ const I={
  circle:(s,w)=>sv('<circle cx="12" cy="12" r="8"/>',s,w),
  star:(s,w)=>sv('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',s,w),
  next:(s,w)=>sv('<path d="M4 12h15M13 6l6 6-6 6"/>',s,w),
- check:()=>sv('<path d="M6 12.5l4 4L18 8"/>',14,2.6),
+ check:(n=14)=>sv('<path d="M6 12.5l4 4L18 8"/>',n,2.6),
+ steps:(s,w)=>sv('<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',s,w),
+ up:()=>sv('<path d="M6 15l6-6 6 6"/>',20,1.8),
+ down:()=>sv('<path d="M6 9l6 6 6-6"/>',20,1.8),
  dots:()=>`<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>`,
  x:()=>sv('<path d="M6 6l12 12M18 6L6 18"/>',18,1.8)
 };
@@ -169,17 +197,48 @@ const TABS=[['dump','Dump','<path d="M4 20h4L19 9l-4-4L4 16z"/>'],['sort','Plane
 
 let tt;const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('s');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('s'),2200)};
 
-function calLink(it){
+/* ---------- Datenmodell ----------
+ Aufgabe: {id,text,created,edited?,status:'unsorted'|'open'|'done',lists:[],due?:'YYYY-MM-DD',slot?:{date,time,dur},steps:[Schritt],struck?,doneAt?}
+ Schritt: {id,text,created,status:'open'|'done',lists:[],struck?,doneAt?,auto?} */
+function migrate(){
+ const logs=S.items.filter(i=>i.kind==='step');
+ S.items=S.items.filter(i=>i.kind!=='step');
+ for(const it of S.items){
+  if(!Array.isArray(it.steps))it.steps=[];
+  if(!Array.isArray(it.lists))it.lists=[];
+  if(it.mark==='circle'&&it.date)it.due=it.date;
+  if(it.mark==='star'&&it.date)it.slot={date:it.date,time:it.time||'09:00',dur:it.dur||60};
+  if(it.mark==='next'&&it.next)it.steps.push({id:uid(),text:it.next,created:it.created||Date.now(),status:'open',lists:[]});
+  delete it.mark;delete it.date;delete it.time;delete it.dur;delete it.next;delete it.replan;
+ }
+ for(const l of logs){const p=find(l.parent);
+  if(p)p.steps.unshift({id:l.id,text:l.text,created:l.created,status:'done',doneAt:l.doneAt,lists:[]});
+  else S.items.push({id:l.id,text:l.text,created:l.created,status:'done',doneAt:l.doneAt,lists:[],steps:[]})}
+}
+migrate();
+if(!Array.isArray(S.undo)||S.undo.some(u=>typeof u==='string'))S.undo=[];
+if(!Array.isArray(S.exp))S.exp=[];
+
+function calLink(it,kind){
  let u='https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(it.text);
- if(it.mark==='circle'&&it.date){const d=it.date.replace(/-/g,'');u+='&dates='+d+'/'+iso(addD(1,parseD(it.date))).replace(/-/g,'')}
- if(it.mark==='star'&&it.date&&it.time){const s=new Date(it.date+'T'+it.time);const e=new Date(s.getTime()+(it.dur||60)*60000);u+='&dates='+stamp(s)+'/'+stamp(e)+'&ctz='+encodeURIComponent(tz)}
+ if(kind==='due'&&it.due){const d=it.due.replace(/-/g,'');u+='&dates='+d+'/'+iso(addD(1,parseD(it.due))).replace(/-/g,'')}
+ if(kind==='slot'&&it.slot){const s=new Date(it.slot.date+'T'+it.slot.time);const e=new Date(s.getTime()+(it.slot.dur||60)*60000);u+='&dates='+stamp(s)+'/'+stamp(e)+'&ctz='+encodeURIComponent(tz)}
  return u+'&details='+encodeURIComponent('Aus dem Brain Dump');
 }
-const subOf=it=>it.replan&&!it.mark?'Nächsten Schritt planen':it.mark==='circle'?fmtD(it.date):it.mark==='star'?`${fmtD(it.date)}, ${it.time} Uhr, ${it.dur} Min.`:it.mark==='next'?'Nächster Schritt: '+it.next:'';
-const rank=it=>({circle:0,star:1,next:2}[it.mark]??3);
-const sorted=a=>a.slice().sort((x,y)=>rank(x)-rank(y)||String(x.date||'').localeCompare(String(y.date||''))||x.created-y.created);
+const openSteps=it=>it.steps.filter(s=>s.status==='open');
+const nextStep=it=>openSteps(it)[0];
+const isPlanned=it=>!!(it.due||it.slot||openSteps(it).length);
+function subOf(it){const p=[];
+ if(it.due)p.push(fmtD(it.due));
+ if(it.slot)p.push(`${fmtD(it.slot.date)}, ${it.slot.time} Uhr`);
+ if(it.steps.length){const n=nextStep(it),dn=it.steps.filter(s=>s.status==='done').length;
+  p.push(n?`→ ${n.text} · ${dn} von ${it.steps.length}`:'Alle Schritte erledigt')}
+ return p.join(' · ')}
+const firstDate=it=>[it.due,it.slot&&it.slot.date].filter(Boolean).sort()[0]||'';
+const rank=it=>(it.due||it.slot)?0:openSteps(it).length?1:2;
+const sorted=a=>a.slice().sort((x,y)=>rank(x)-rank(y)||firstDate(x).localeCompare(firstDate(y))||x.created-y.created);
 const isToday=t=>t&&iso(new Date(t))===iso(new Date());
-const markIc=i=>i.mark?`<span class="mi" title="${{circle:'Datum',star:'Zeitslot',next:'Nächster Schritt'}[i.mark]}">${I[i.mark](18)}</span>`:'';
+const markIc=it=>(it.due?`<span class="mi" title="Datum">${I.circle(18)}</span>`:'')+(it.slot?`<span class="mi" title="Zeitslot">${I.star(18)}</span>`:'');
 
 function renderNav(){$('#nav').innerHTML=TABS.map(([k,l,p])=>`<button data-act="tab" data-v="${k}" class="${S.tab===k?'on':''}" aria-current="${S.tab===k?'page':'false'}">${sv(p,20,S.tab===k?2:1.6)}${l}</button>`).join('')}
 
@@ -191,6 +250,24 @@ function render(){
 }
 const page=(title,html)=>{$('#hd').textContent=title;$('#main').innerHTML=`<div class="wrap">${html}</div>`};
 
+/* Bulletpoints in Textfeldern (Dump und Schritte) */
+function bulletize(ta,onChange){
+ ta.addEventListener('focus',()=>{if(!ta.value){ta.value='• ';onChange()}});
+ ta.addEventListener('input',()=>{
+  const p=ta.selectionStart,v=ta.value,ls=v.lastIndexOf('\n',p-1)+1;
+  if(/^([-*]|\d+\.)\s$/.test(v.slice(ls,p))){ta.value=v.slice(0,ls)+'• '+v.slice(p);ta.selectionStart=ta.selectionEnd=ls+2}
+  onChange();
+ });
+ ta.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'||e.shiftKey||e.isComposing)return;
+  e.preventDefault();
+  const p=ta.selectionStart,v=ta.value,ls=v.lastIndexOf('\n',p-1)+1;
+  if(/^•\s*$/.test(v.slice(ls,p)))return;
+  ta.setRangeText('\n• ',p,ta.selectionEnd,'end');onChange();
+ });
+}
+const lines=t=>String(t||'').split('\n').map(l=>l.replace(/^\s*(•|[-*]|\d+\.)\s*/,'').trim()).filter(Boolean);
+
 /* ---------- DUMP ---------- */
 function ovSet(on){U.ov=on;document.body.classList.toggle('ov',on);const t=$('#tg');t.setAttribute('aria-expanded',on);t.setAttribute('aria-label',on?'Leiste ausblenden':'Leiste einblenden')}
 function vDump(){
@@ -200,21 +277,7 @@ function vDump(){
   <div class="dfoot"><span id="tm"></span><button class="btn" data-act="finish">Fertig</button></div>`;
  ovSet(!!U.ov);
  const ta=$('#ta');ta.value=S.draft;tick();
- ta.addEventListener('focus',()=>{if(!ta.value){ta.value='• ';S.draft=ta.value}});
- ta.addEventListener('input',()=>{
-  const p=ta.selectionStart,v=ta.value,ls=v.lastIndexOf('\n',p-1)+1;
-  const m=v.slice(ls,p).match(/^([-*]|\d+\.)\s$/);
-  if(m){ta.value=v.slice(0,ls)+'• '+v.slice(p);ta.selectionStart=ta.selectionEnd=ls+2}
-  S.draft=ta.value;save();
-  if(!U.timerEnd&&S.timer){U.timerEnd=Date.now()+S.timer*60000;tick()}
- });
- ta.addEventListener('keydown',e=>{
-  if(e.key!=='Enter'||e.shiftKey||e.isComposing)return;
-  e.preventDefault();
-  const p=ta.selectionStart,v=ta.value,ls=v.lastIndexOf('\n',p-1)+1,line=v.slice(ls,p);
-  if(/^•\s*$/.test(line))return;
-  ta.setRangeText('\n• ',p,ta.selectionEnd,'end');S.draft=ta.value;save();
- });
+ bulletize(ta,()=>{S.draft=ta.value;save();if(!U.timerEnd&&S.timer){U.timerEnd=Date.now()+S.timer*60000;tick()}});
 }
 function tick(){const t=$('#tm');if(!t)return;
  if(!S.timer){t.textContent='';return}
@@ -223,128 +286,163 @@ function tick(){const t=$('#tm');if(!t)return;
  t.textContent=r?Math.floor(r/60)+':'+pad(r%60):'Zeit um';t.style.color=r?'':'var(--ink)'}
 setInterval(tick,1000);
 
-/* ---------- SORTIEREN ---------- */
+/* ---------- PLANEN ---------- */
 const review=()=>S.mode==='review';
 const queue=()=>review()?S.batch.map(find).filter(i=>i&&i.status==='open'&&!S.seen.includes(i.id)):S.items.filter(i=>i.status==='unsorted');
-const unmarked=()=>S.items.filter(i=>i.status==='open'&&!i.mark);
+const unmarked=()=>S.items.filter(i=>i.status==='open'&&!isPlanned(i));
 const curItem=()=>U.planId?find(U.planId):queue()[0];
-function startPick(k,it){const n=new Date();n.setHours(n.getHours()+1,0,0,0);
- const same=it&&it.mark===k;
- U.pick={date:same&&it.date||iso(new Date()),time:same&&it.time||pad(n.getHours())+':00',dur:same&&it.dur||60,next:''}}
-function vPlan(){
- const it=find(U.planId);if(!it){U.planId=null;S.tab='lists';return render()}
- const mk=(k,l)=>`<button class="mk ${U.panel===k?'on':''}" data-act="panel" data-v="${k}" aria-pressed="${U.panel===k}">${I[k](26,1.6)}${l}</button>`;
- page('Planen',`<div style="display:flex;flex-direction:column;gap:22px">
-   <div class="meta"><span>${it.mark?'Aktuell: '+esc({circle:'Datum',star:'Zeitslot',next:'Nächster Schritt'}[it.mark])+(subOf(it)?', '+esc(subOf(it)):''):'Noch ohne Markierung'}</span></div>
+function startPlan(it){
+ const n=new Date();n.setHours(n.getHours()+1,0,0,0);
+ U.sel=new Set();if(it.due)U.sel.add('due');if(it.slot)U.sel.add('slot');if(openSteps(it).length)U.sel.add('steps');
+ U.pick={due:it.due||iso(new Date()),sdate:it.slot?it.slot.date:iso(new Date()),time:it.slot?it.slot.time:pad(n.getHours())+':00',dur:it.slot?it.slot.dur:60,
+  steps:openSteps(it).map(s=>'• '+s.text).join('\n')};
+ U.pickFor=it.id;
+}
+function keep(){const t=$('#st');if(t)U.pick.steps=t.value}
+function planCard(it,head,foot){
+ if(U.pickFor!==it.id)startPlan(it);
+ const tile=(k,ic,l)=>`<button class="mk ${U.sel.has(k)?'on':''}" data-act="tile" data-v="${k}" aria-pressed="${U.sel.has(k)}">${ic}${l}</button>`;
+ const P=U.pick;
+ const chips=k=>{const opts=[[iso(new Date()),'Heute'],[iso(addD(1)),'Morgen'],[iso(addD(2)),'Übermorgen']];
+  return `<div class="chips">${opts.map(([v,l])=>`<button class="chip ${P[k]===v?'on':''}" data-act="pick" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div>
+  <label><span class="lab">Oder ein anderes Datum</span><input type="date" data-pick="${k}" value="${P[k]||''}"></label>`};
+ let panels='';
+ if(U.sel.has('due'))panels+=`<div class="panel"><span class="ph">${I.circle(16)}Datum: Wann ist es dran?</span>${chips('due')}</div>`;
+ if(U.sel.has('slot'))panels+=`<div class="panel"><span class="ph">${I.star(16)}Zeitslot: Wann erledigst du es?</span>${chips('sdate')}
+  <div class="two"><label><span class="lab">Uhrzeit</span><input type="time" data-pick="time" value="${P.time}"></label>
+  <div><span class="lab">Dauer (Min.)</span><div class="chips">${[30,60,90].map(m=>`<button class="chip ${P.dur===m?'on':''}" data-act="pick" data-k="dur" data-v="${m}">${m}</button>`).join('')}</div></div></div></div>`;
+ if(U.sel.has('steps'))panels+=`<div class="panel"><label for="st" class="ph">${I.steps(16)}Schritte, einer pro Zeile</label><textarea id="st" class="stx" rows="4" placeholder="• Erster Schritt, z. B. „Kontoauszug suchen“"></textarea></div>`;
+ const kind=U.sel.has('slot')?'slot':U.sel.has('due')?'due':null;
+ const draft=Object.assign({},it,{due:P.due,slot:{date:P.sdate,time:P.time,dur:P.dur}});
+ const saveRow=U.sel.size?`<div class="row2"><button class="btn link" data-act="savePlan">${kind?'Nur speichern':''}</button>${kind?`<a class="btn" data-act="saveCal" href="${esc(calLink(draft,kind))}" target="_blank" rel="noopener">Speichern und in Kalender</a>`:'<button class="btn" data-act="savePlan">Speichern</button>'}</div>`:'';
+ page('Planen',`${head}
+  <div style="display:flex;flex-direction:column;gap:18px">
    <p class="q">${esc(it.text)}</p>
-   <div class="marks">${mk('circle','Datum')}${mk('star','Zeitslot')}${mk('next','Nächster Schritt')}</div>
-  </div>
-  ${panel(it)}
-  <div class="row2"><button class="btn link" data-act="planBack">Abbrechen</button>${it.mark?'<button class="btn link" data-act="unmark">Markierung entfernen</button>':''}</div>`);
- const t=$('#nx');if(t)t.focus();
+   <div class="marks">${tile('due',I.circle(26),'Datum')}${tile('slot',I.star(26),'Zeitslot')}${tile('steps',I.steps(26),'Schritte')}</div>
+   <span class="lab" style="margin:-6px 0 0">Mehrere Markierungen möglich</span>
+  </div>${panels}${saveRow}${foot}`);
+ const st=$('#st');if(st){st.value=P.steps||'';bulletize(st,()=>{U.pick.steps=st.value});if(U.focusSteps){U.focusSteps=false;st.focus()}}
 }
 function vSort(){
- if(U.planId)return vPlan();
+ if(U.planId){const it=find(U.planId);if(!it){U.planId=null;S.tab='lists';return render()}
+  return planCard(it,'',`<div class="row2"><button class="btn link" data-act="planBack">Abbrechen</button></div>`)}
  const q=queue();
  const total=S.batch.length,doneN=total-q.length;
  if(!q.length){const um=unmarked().length;
   page('Planen',`<p class="quote">${S.batch.length?'Alles eingeplant. ':''}Dein Kopf ist leer, die Gedanken sind geparkt.</p>
-  ${um?`<div class="sec"><h2>Aufgaben ohne Markierung</h2><p class="txt">${um===1?'Eine Aufgabe':um+' Aufgaben'} in der Masterliste ${um===1?'hat':'haben'} noch kein Datum, keinen Zeitslot und keinen nächsten Schritt.</p><div><button class="btn" data-act="review">Jetzt planen</button></div></div>`:''}
+  ${um?`<div class="sec"><h2>Aufgaben ohne Markierung</h2><p class="txt">${um===1?'Eine Aufgabe':um+' Aufgaben'} in der Masterliste ${um===1?'hat':'haben'} noch kein Datum, keinen Zeitslot und keine offenen Schritte.</p><div><button class="btn" data-act="review">Jetzt planen</button></div></div>`:''}
   <div class="row2"><button class="btn out" data-act="tab" data-v="dump">Neuer Dump</button><button class="btn ${um?'out':''}" data-act="tab" data-v="lists">Zu den Listen</button></div>`);return}
  const it=q[0],n=Math.min(doneN+1,total||1);
  if(total)$('#hs').textContent=n+' von '+total;
- const mk=(k,l)=>`<button class="mk ${U.panel===k?'on':''}" data-act="panel" data-v="${k}" aria-pressed="${U.panel===k}">${I[k](26,1.6)}${l}</button>`;
- page('Planen',`${total?`<div class="prog" role="img" aria-label="${doneN} von ${total} geplant"><i style="width:${Math.round(doneN/total*100)}%"></i></div>`:''}
-  <div style="display:flex;flex-direction:column;gap:22px">
-   <div class="meta"><span>Punkt ${n}${total?' von '+total:''}</span><button class="ic" data-act="del" data-id="${it.id}" aria-label="Punkt löschen" style="margin:-10px -12px -10px 0">${I.x()}</button></div>
-   <p class="q">${esc(it.text)}</p>
-   <div class="marks">${mk('circle','Datum')}${mk('star','Zeitslot')}${mk('next','Nächster Schritt')}</div>
-  </div>
-  ${panel(it)}
-  <div class="row2"><button class="btn link" data-act="undo" ${S.undo.length?'':'disabled'}>Zurück</button><button class="btn link" data-act="nomark">Ohne Markierung weiter</button></div>`);
- const t=$('#nx');if(t)t.focus();
+ planCard(it,`${total?`<div class="prog" role="img" aria-label="${doneN} von ${total} geplant"><i style="width:${Math.round(doneN/total*100)}%"></i></div>`:''}
+  <div class="meta"><span>Punkt ${n}${total?' von '+total:''}</span><button class="ic" data-act="del" data-id="${it.id}" aria-label="Punkt löschen" style="margin:-10px -12px -10px 0">${I.x()}</button></div>`,
+  `<div class="row2"><button class="btn link" data-act="undo" ${S.undo.length?'':'disabled'}>Zurück</button><button class="btn link" data-act="nomark">Ohne Markierung weiter</button></div>`);
 }
-function dateChips(){const P=U.pick;const opts=[[iso(new Date()),'Heute'],[iso(addD(1)),'Morgen'],[iso(addD(2)),'Übermorgen']];
- return `<div class="chips">${opts.map(([v,l])=>`<button class="chip ${P.date===v?'on':''}" data-act="pick" data-k="date" data-v="${v}">${l}</button>`).join('')}</div>
- <label><span class="lab">Oder ein anderes Datum</span><input type="date" data-pick="date" value="${P.date||''}"></label>`}
-function panel(it){
- if(!U.panel)return'';
- const P=U.pick,draft=Object.assign({},it,{mark:U.panel},P);
- const save2=`<div class="row2"><button class="btn link" data-act="saveMark">Nur speichern</button><a class="btn" data-act="saveCal" href="${esc(calLink(draft))}" target="_blank" rel="noopener">Speichern und in Kalender</a></div>`;
- if(U.panel==='circle')return `<div class="panel"><span class="lab" style="margin:0">Wann ist es dran?</span>${dateChips()}${save2}</div>`;
- if(U.panel==='star')return `<div class="panel"><span class="lab" style="margin:0">Wann erledigst du es?</span>${dateChips()}
-  <div class="two"><label><span class="lab">Uhrzeit</span><input type="time" data-pick="time" value="${P.time}"></label>
-  <div><span class="lab">Dauer (Min.)</span><div class="chips">${[30,60,90].map(m=>`<button class="chip ${P.dur===m?'on':''}" data-act="pick" data-k="dur" data-v="${m}">${m}</button>`).join('')}</div></div></div>${save2}</div>`;
- return `<div class="panel"><label><span class="lab">Erster Schritt, als Verb und Ding, z. B. „Kontoauszug suchen“</span><input type="text" id="nx" value="${esc(P.next||'')}" enterkeyhint="done"></label>
-  <div class="end"><button class="btn" data-act="saveMark">Speichern</button></div></div>`;
-}
-function settle(it,mark){
+function settle(it){
+ keep();const P=U.pick;
+ if(U.sel.has('due')&&!P.due){toast('Bitte ein Datum wählen');return false}
+ if(U.sel.has('slot')&&(!P.sdate||!P.time)){toast('Bitte Tag und Uhrzeit wählen');return false}
+ const ls=U.sel.has('steps')?lines(P.steps):[];
+ if(U.sel.has('steps')&&!ls.length){toast('Schreib mindestens einen Schritt auf');return false}
  const plan=!!U.planId;
- delete it.date;delete it.time;delete it.dur;delete it.next;delete it.replan;
- it.status='open';it.mark=mark;
- if(mark==='circle'){it.date=U.pick.date}
- if(mark==='star'){it.date=U.pick.date;it.time=U.pick.time;it.dur=U.pick.dur}
- if(mark==='next'){it.next=U.pick.next}
- if(!plan){S.undo.push(it.id);if(review())S.seen.push(it.id)}U.panel=null;save();
+ if(!plan)S.undo.push({id:it.id,prev:JSON.parse(JSON.stringify(it))});
+ it.status='open';
+ if(U.sel.has('due'))it.due=P.due;else delete it.due;
+ if(U.sel.has('slot'))it.slot={date:P.sdate,time:P.time,dur:P.dur};else delete it.slot;
+ const old=openSteps(it),used=new Set();
+ const fresh=ls.map(t=>{const m=old.find(s=>s.text===t&&!used.has(s.id));if(m){used.add(m.id);return m}return{id:uid(),text:t,created:Date.now(),status:'open',lists:[]}});
+ it.steps=it.steps.filter(s=>s.status==='done').concat(fresh);
+ it.edited=Date.now();
+ if(!plan&&review())S.seen.push(it.id);
+ U.pickFor=null;save();
  if(plan){U.planId=null;S.tab='lists';toast('Geplant')}
+ return true;
 }
 
 /* ---------- LISTEN ---------- */
+const openTasks=()=>S.items.filter(i=>i.status==='open');
+const inList=(L,o)=>o.lists.includes(L.id);
+function listCount(L){let n=0;for(const t of openTasks()){if(inList(L,t))n++;n+=openSteps(t).filter(s=>inList(L,s)).length}return n}
 function vLists(){
- const open=S.items.filter(i=>i.status==='open');
+ const open=openTasks();
  if(S.cur!=='master'&&!S.lists.some(l=>l.id===S.cur))S.cur='master';
- const cnt=l=>open.filter(i=>i.lists.includes(l.id)).length;
  const chips=`<button class="chip ${S.cur==='master'?'on':''}" data-act="list" data-v="master">Masterliste ${open.length}</button>`
-  +S.lists.map(l=>`<button class="chip ${S.cur===l.id?'on':''}" data-act="list" data-v="${l.id}">${esc(l.name)} ${cnt(l)}${l.max?'/'+l.max:''}</button>`).join('')
+  +S.lists.map(l=>`<button class="chip ${S.cur===l.id?'on':''}" data-act="list" data-v="${l.id}">${esc(l.name)} ${listCount(l)}${l.max?'/'+l.max:''}</button>`).join('')
   +`<button class="chip" data-act="newList" aria-label="Neue Liste">+</button>`;
  const nl=U.newList?`<div class="panel"><label><span class="lab">Name der neuen Liste</span><input type="text" id="nl" maxlength="24" enterkeyhint="done"></label><div class="row2"><button class="btn link" data-act="newList">Abbrechen</button><button class="btn" data-act="mkList">Anlegen</button></div></div>`:'';
- const L0=S.lists.find(l=>l.id===S.cur);
- const qa=U.qaOpen?`<div class="qa open"><button class="add" data-act="qa" aria-label="Aufgabe hinzufügen" aria-expanded="true">+</button><label for="qa" class="sr">Neue Aufgabe</label><input type="text" id="qa" placeholder="Neue Aufgabe${L0?' für '+esc(L0.name):''}" enterkeyhint="done" autocomplete="off"></div>`
+ const L=S.lists.find(l=>l.id===S.cur);
+ const qa=U.qaOpen?`<div class="qa open"><button class="add" data-act="qa" aria-label="Aufgabe hinzufügen" aria-expanded="true">+</button><label for="qa" class="sr">Neue Aufgabe</label><input type="text" id="qa" placeholder="Neue Aufgabe${L?' für '+esc(L.name):''}" enterkeyhint="done" autocomplete="off"></div>`
   :`<div class="qa"><button class="add" data-act="qa" aria-label="Neue Aufgabe" aria-expanded="false">+</button></div>`;
  let body='';
- if(S.cur==='master'){
-  body=(open.length?`<div class="rows">${sorted(open).map(i=>row(i,'master')).join('')}</div>`:'<p class="empty">Noch nichts geparkt. Starte mit einem Dump oder tippe auf das Plus.</p>')+qa;
+ if(!L){
+  body=(open.length?`<div class="rows">${sorted(open).map(t=>taskRow(t,'master')).join('')}</div>`:'<p class="empty">Noch nichts geparkt. Starte mit einem Dump oder tippe auf das Plus.</p>')+qa;
  }else{
-  const L=S.lists.find(l=>l.id===S.cur);
-  const inL=S.items.filter(i=>i.lists.includes(L.id)&&(i.status==='open'||(i.status==='done'&&isToday(i.doneAt))));
-  const dn=inL.filter(i=>i.status==='done'||i.struck).length,full=L.max&&cnt(L)>=L.max;
-  const cand=sorted(open.filter(i=>!i.lists.includes(L.id)));
-  if(inL.length)$('#hs').textContent=dn+' von '+inL.length+' erledigt';
-  body=`${inL.length?`<div class="prog" role="img" aria-label="${dn} von ${inL.length} erledigt"><i style="width:${Math.round(dn/inL.length*100)}%"></i></div>
-   <div class="rows">${sorted(inL.filter(i=>i.status==='open')).map(i=>row(i,'list')).join('')}</div>`:'<p class="empty">Noch leer. Hol dir unten etwas aus der Masterliste.</p>'}${qa}
-   <div class="sec"><h2>Aus der Masterliste holen</h2>
-   ${full?`<p class="txt">${esc(L.name)} ist voll. Erst etwas erledigen, dann nachlegen.</p>`:cand.length?`<div>${cand.map(i=>`<div class="pick">${markIc(i)}<span class="rt">${esc(i.text)}${subOf(i)?`<span class="sub">${esc(subOf(i))}</span>`:''}</span><button class="add" data-act="addTo" data-id="${i.id}" data-v="${L.id}" aria-label="Zu ${esc(L.name)} hinzufügen">+</button></div>`).join('')}</div>`:'<p class="txt">Nichts mehr da, alles ist schon in dieser Liste.</p>'}</div>
+  const tasks=sorted(open.filter(t=>inList(L,t)));
+  const steps=[];for(const t of sorted(open))for(const s of openSteps(t))if(inList(L,s))steps.push([t,s]);
+  let done=0,total=0;
+  for(const t of S.items){if(inList(L,t)&&(t.status==='open'||(t.status==='done'&&isToday(t.doneAt)))){total++;if(t.status==='done'||t.struck)done++}
+   for(const s of t.steps||[])if(inList(L,s)&&!s.auto&&(s.status==='open'&&t.status==='open'||(s.status==='done'&&isToday(s.doneAt)))){total++;if(s.status==='done'||s.struck)done++}}
+  const full=L.max&&listCount(L)>=L.max;
+  if(total)$('#hs').textContent=done+' von '+total+' erledigt';
+  const rows=steps.map(([t,s])=>stepRow(t,s,L)).join('')+tasks.map(t=>taskRow(t,'list')).join('');
+  body=`${total?`<div class="prog" role="img" aria-label="${done} von ${total} erledigt"><i style="width:${Math.round(done/total*100)}%"></i></div>`:''}
+   ${rows?`<div class="rows">${rows}</div>`:'<p class="empty">Noch leer. Hol dir unten etwas aus der Masterliste.</p>'}${qa}
+   <div class="sec"><h2>Aus der Masterliste holen</h2>${full?`<p class="txt">${esc(L.name)} ist voll. Erst etwas erledigen, dann nachlegen.</p>`:pickList(L)}</div>
    ${L.id!=='heute'?`<div class="end"><button class="btn link" data-act="delList">${U.confirm==='list'?'Wirklich löschen?':'Liste löschen'}</button></div>`:''}`;
  }
  page('Listen',`<div class="chips">${chips}</div>${nl}${body}`);
- if(U.newList)$('#nl').focus();else if(U.qaFocus){U.qaFocus=false;$('#qa').focus()}
+ if(U.newList)$('#nl').focus();else if(U.qaFocus){U.qaFocus=false;$('#qa').focus()}else if(U.stepFocus){U.stepFocus=false;const f=$('#ns');if(f)f.focus()}
 }
-function row(i,ctx){
- const done=i.status==='done',sub=subOf(i);
- let acts='';
- if(U.open===i.id){
-  const ls=ctx==='master'?S.lists.filter(l=>!i.lists.includes(l.id)).map(l=>`<button class="btn out" data-act="addTo" data-id="${i.id}" data-v="${l.id}">Zu ${esc(l.name)}</button>`).join(''):`<button class="btn out" data-act="rmFrom" data-id="${i.id}">Aus Liste nehmen</button>`;
-  const cal=(i.mark==='circle'||i.mark==='star')?`<a class="btn out" href="${esc(calLink(i))}" target="_blank" rel="noopener">Kalender</a>`:'';
-  const full=i.mark==='next'?`<button class="btn out" data-act="fullDone" data-id="${i.id}">Ganze Aufgabe erledigt</button>`:'';
-  const fin=i.struck?`<button class="btn" data-act="finishItem" data-id="${i.id}">Abschließen</button>`:'';
-  acts=`<div class="acts">${fin}${ls}${cal}${full}<button class="btn" data-act="del" data-id="${i.id}">${U.confirm===i.id?'Wirklich löschen?':'Löschen'}</button></div>`;
+function pickList(L){
+ const out=[];
+ for(const t of sorted(openTasks())){
+  const os=openSteps(t),tIn=inList(L,t),sFree=os.filter(s=>!inList(L,s));
+  if(tIn&&!sFree.length)continue;
+  let h=`<div class="pick">${markIc(t)||'<span style="width:18px;flex:0 0 18px"></span>'}<span class="rt">${esc(t.text)}${t.due||t.slot?`<span class="sub">${esc(subOf(Object.assign({},t,{steps:[]})))}</span>`:''}</span>${tIn?'<span class="inl">in Liste</span>':`<button class="add" data-act="addTo" data-id="${t.id}" data-v="${L.id}" aria-label="${esc(t.text)} zu ${esc(L.name)} hinzufügen">+</button>`}</div>`;
+  if(os.length)h+=`<div class="psteps">${os.map(s=>`<div class="pstep"><span class="rt">${esc(s.text)}</span>${inList(L,s)?'<span class="inl">in Liste</span>':`<button class="add sm" data-act="addTo" data-id="${t.id}" data-s="${s.id}" data-v="${L.id}" aria-label="Schritt ${esc(s.text)} zu ${esc(L.name)} hinzufügen">+</button>`}</div>`).join('')}</div>`;
+  out.push(h);
  }
- const st=!done&&i.struck,on=done||st;
- return `<div class="row ${done?'done':''} ${st?'struck':''}" ${st?`data-swipe="${i.id}"`:''}><button class="cb ${on?'on':''}" data-act="${done?'toggle':'strike'}" data-id="${i.id}" aria-label="${done?'Wieder öffnen':st?'Nicht mehr abhaken':'Abhaken'}">${on?I.check():''}</button>
-  <button class="rt tap" data-act="plan" data-id="${i.id}" ${on?'disabled':''}><span>${esc(i.text)}</span>${st?'<span class="sub">Nach rechts wischen zum Abschließen</span>':sub?`<span class="sub">${esc(sub)}</span>`:''}</button>${st?'':markIc(i)}
-  <button class="ic" data-act="more" data-id="${i.id}" aria-label="Aktionen" aria-expanded="${U.open===i.id}">${I.dots()}</button></div>${acts}`;
+ return out.length?`<div>${out.join('')}</div>`:'<p class="txt">Nichts mehr da, alles ist schon in dieser Liste.</p>';
+}
+function taskRow(t,ctx){
+ const st=!!t.struck,sub=subOf(t),hasSteps=t.steps.length>0,exp=hasSteps&&S.exp.includes(t.id);
+ let acts='';
+ if(U.open===t.id){
+  const ls=ctx==='master'?S.lists.filter(l=>!inList(l,t)).map(l=>`<button class="btn out" data-act="addTo" data-id="${t.id}" data-v="${l.id}">Zu ${esc(l.name)}</button>`).join(''):`<button class="btn out" data-act="rmFrom" data-id="${t.id}">Aus Liste nehmen</button>`;
+  const cal=(t.due?`<a class="btn out" href="${esc(calLink(t,'due'))}" target="_blank" rel="noopener">Datum in Kalender</a>`:'')+(t.slot?`<a class="btn out" href="${esc(calLink(t,'slot'))}" target="_blank" rel="noopener">Zeitslot in Kalender</a>`:'');
+  acts=`<div class="acts"><button class="btn" data-act="finishItem" data-id="${t.id}">Abschließen</button>${ls}${cal}<button class="btn out" data-act="del" data-id="${t.id}">${U.confirm===t.id?'Wirklich löschen?':'Löschen'}</button></div>`;
+ }
+ const steps=exp?`<div class="steps">${t.steps.map(s=>stepLine(t,s)).join('')}${U.addStep===t.id?`<div class="step"><span class="sp">+</span><label for="ns" class="sr">Neuer Schritt</label><input type="text" id="ns" class="nsi" placeholder="Neuer Schritt" enterkeyhint="done" autocomplete="off"></div>`:`<button class="step addst" data-act="addStep" data-id="${t.id}"><span class="sp">+</span>Schritt</button>`}</div>`:'';
+ return `<div class="task${exp?' exp':''}"><div class="row ${st?'struck':''}" ${st?`data-swipe="${t.id}"`:''}><button class="cb ${st?'on':''}" data-act="strike" data-id="${t.id}" aria-label="${st?'Nicht mehr abhaken':'Abhaken'}">${st?I.check():''}</button>
+  <button class="rt tap" data-act="plan" data-id="${t.id}" ${st?'disabled':''}><span>${esc(t.text)}</span>${st?'<span class="sub">Nach rechts wischen zum Abschließen</span>':sub?`<span class="sub">${esc(sub)}</span>`:''}</button>${st?'':markIc(t)}
+  ${hasSteps&&!st?`<button class="ic" data-act="exp" data-id="${t.id}" aria-label="${exp?'Schritte zuklappen':'Schritte aufklappen'}" aria-expanded="${exp}">${exp?I.up():I.down()}</button>`:''}
+  <button class="ic" data-act="more" data-id="${t.id}" aria-label="Aktionen" aria-expanded="${U.open===t.id}">${I.dots()}</button></div>${acts}${steps}</div>`;
+}
+function stepLine(t,s){
+ const done=s.status==='done',st=!done&&s.struck,key=t.id+'|'+s.id;
+ return `<div class="step ${done?'done':''} ${st?'struck':''}" ${st?`data-swipe="${key}"`:''}><button class="scb ${done||st?'on':''}" data-act="${done?'sreopen':'sstrike'}" data-id="${t.id}" data-s="${s.id}" aria-label="${done?'Schritt wieder öffnen':st?'Nicht mehr abhaken':'Schritt abhaken'}">${done||st?I.check(11):''}</button>
+  <span class="st">${esc(s.text)}${st?'<span class="sub">Nach rechts wischen zum Abschließen</span>':''}</span></div>`;
+}
+function stepRow(t,s,L){
+ const st=!!s.struck,key=t.id+'|'+s.id,k='s'+s.id;
+ const acts=U.open===k?`<div class="acts"><button class="btn out" data-act="rmFrom" data-id="${t.id}" data-s="${s.id}">Aus Liste nehmen</button></div>`:'';
+ return `<div class="task"><div class="row ${st?'struck':''}" ${st?`data-swipe="${key}"`:''}><button class="cb ${st?'on':''}" data-act="sstrike" data-id="${t.id}" data-s="${s.id}" aria-label="${st?'Nicht mehr abhaken':'Schritt abhaken'}">${st?I.check():''}</button>
+  <div class="rt"><span>${esc(s.text)}</span><span class="sub">${st?'Nach rechts wischen zum Abschließen':'Schritt zu: '+esc(t.text)}</span></div>
+  <button class="ic" data-act="more" data-id="${k}" aria-label="Aktionen" aria-expanded="${U.open===k}">${I.dots()}</button></div>${acts}</div>`;
 }
 
 /* ---------- ERLEDIGT ---------- */
 function vDone(){
- const d=S.items.filter(i=>i.status==='done').sort((a,b)=>b.doneAt-a.doneAt);
+ const d=[];
+ for(const t of S.items){if(t.status==='done')d.push({t,at:t.doneAt});for(const s of t.steps||[])if(s.status==='done'&&!s.auto)d.push({t,s,at:s.doneAt})}
+ d.sort((a,b)=>b.at-a.at);
  const mon=new Date();mon.setHours(0,0,0,0);mon.setDate(mon.getDate()-((mon.getDay()+6)%7));
- const wk=d.filter(i=>i.doneAt>=mon.getTime()).length;
+ const wk=d.filter(x=>x.at>=mon.getTime()).length;
  const lbl=t=>{const x=new Date(t),s=iso(x);return s===iso(new Date())?'Heute':s===iso(addD(-1))?'Gestern':WDL[x.getDay()]+', '+x.getDate()+'.'+(x.getMonth()+1)+'.'};
  let last='',list='';
- for(const i of d){const l=lbl(i.doneAt);if(l!==last){list+=`${last?'</div>':''}<div class="gl">${l}</div><div class="rows">`;last=l}
-  const t=new Date(i.doneAt);
-  list+=`<div class="row"><button class="cb on" data-act="toggle" data-id="${i.id}" aria-label="Zurückholen">${I.check()}</button><span class="rt">${esc(i.text)}${i.kind==='step'?`<span class="sub">Schritt zu: ${esc(i.of)}</span>`:''}</span><span class="d">${pad(t.getHours())}:${pad(t.getMinutes())}</span></div>`}
+ for(const {t,s,at} of d){const l=lbl(at);if(l!==last){list+=`${last?'</div>':''}<div class="gl">${l}</div><div class="rows">`;last=l}
+  const tm=new Date(at);
+  list+=`<div class="row"><button class="cb on" data-act="${s?'sreopen':'reopen'}" data-id="${t.id}" ${s?`data-s="${s.id}"`:''} aria-label="Zurückholen">${I.check()}</button><span class="rt">${esc(s?s.text:t.text)}${s?`<span class="sub">Schritt zu: ${esc(t.text)}</span>`:''}</span><span class="d">${pad(tm.getHours())}:${pad(tm.getMinutes())}</span></div>`}
  if(last)list+='</div>';
  page('Erledigt',`<div class="big"><b>${wk}</b><span>diese Woche erledigt</span></div>
   <div>${list||'<p class="empty">Hier landet alles, was du abhakst.</p>'}</div>`);
@@ -361,96 +459,98 @@ function vOpt(){
  <div class="sec"><h2>Alles löschen</h2><div><button class="btn" data-act="wipe">${U.confirm==='wipe'?'Wirklich alles löschen?':'Alle Daten löschen'}</button></div></div>`);
 }
 
-function complete(it){
- delete it.struck;
- if(it.mark==='next'){
-  S.items.push({id:uid(),kind:'step',parent:it.id,text:it.next,of:it.text,created:Date.now(),status:'done',doneAt:Date.now(),mark:null,lists:[]});
-  it.mark=null;delete it.next;it.replan=true;toast('Schritt erledigt. Plane den nächsten.')}
- else{it.status='done';it.doneAt=Date.now();toast('Erledigt. Ab ins Beweisglas.')}
+/* ---------- Abschließen ---------- */
+function completeTask(t){
+ delete t.struck;t.status='done';t.doneAt=Date.now();
+ for(const s of t.steps)if(s.status==='open'){s.status='done';s.doneAt=t.doneAt;s.auto=true;delete s.struck}
+ S.exp=S.exp.filter(x=>x!==t.id);toast('Erledigt. Ab ins Beweisglas.');
 }
+function completeStep(t,s){
+ delete s.struck;s.status='done';s.doneAt=Date.now();
+ toast(openSteps(t).length?'Schritt erledigt. Weiter mit: '+nextStep(t).text:'Alle Schritte erledigt');
+}
+function byKey(k){const [tid,sid]=String(k).split('|');const t=find(tid);return [t,sid&&t?t.steps.find(x=>x.id===sid):null]}
 /* Wischen */
 let sw=null,swallow=false;
 document.addEventListener('pointerdown',e=>{const r=e.target.closest('[data-swipe]');if(!r||e.button>0)return;sw={r,x:e.clientX,y:e.clientY,dx:0,on:false,id:e.pointerId}});
 document.addEventListener('pointermove',e=>{if(!sw||e.pointerId!==sw.id)return;const dx=e.clientX-sw.x,dy=e.clientY-sw.y;
  if(!sw.on){if(Math.abs(dy)>10&&Math.abs(dy)>Math.abs(dx)){sw=null;return}if(dx>10&&dx>Math.abs(dy)){sw.on=true;sw.r.classList.add('drag');try{sw.r.setPointerCapture(e.pointerId)}catch(_){}}else return}
- sw.dx=Math.max(0,dx);sw.r.style.transform=`translateX(${sw.dx}px)`;sw.r.style.opacity=String(Math.max(.2,1-sw.dx/sw.r.offsetWidth))});
+ sw.dx=Math.max(0,dx);sw.r.style.transform=`translateX(${sw.dx}px)`;sw.r.style.opacity=String(Math.max(.2,1-sw.dx/(sw.r.offsetWidth||1)))});
 const swEnd=e=>{if(!sw||e.pointerId!==sw.id)return;const {r,dx,on}=sw;sw=null;if(!on)return;swallow=true;setTimeout(()=>swallow=false,0);
  r.classList.remove('drag');r.classList.add('fly');
  if(dx>r.offsetWidth*.35){r.style.transform='translateX(110%)';r.style.opacity='0';
-  setTimeout(()=>{const it=find(r.dataset.swipe);if(it){complete(it);save();render()}},220)}
+  setTimeout(()=>{const [t,s]=byKey(r.dataset.swipe);if(t){s?completeStep(t,s):completeTask(t);save();render()}},220)}
  else{r.style.transform='';r.style.opacity='';setTimeout(()=>r.classList.remove('fly'),230)}};
 document.addEventListener('pointerup',swEnd);document.addEventListener('pointercancel',swEnd);
+
 /* ---------- AKTIONEN ---------- */
+const stepOf=el=>{const t=find(el.dataset.id);return [t,t&&el.dataset.s?t.steps.find(x=>x.id===el.dataset.s):null]};
 const A={
  ov:()=>{ovSet(!U.ov)},
- tab:el=>{S.tab=el.dataset.v;U.planId=null;U.qaOpen=false;U.panel=null;U.open=null;U.confirm=null;save();render()},
+ tab:el=>{S.tab=el.dataset.v;U.planId=null;U.pickFor=null;U.qaOpen=false;U.addStep=null;U.open=null;U.confirm=null;save();render()},
  finish:()=>{
-  const lines=S.draft.split('\n').map(l=>l.replace(/^\s*(•|[-*]|\d+\.)\s*/,'').trim()).filter(Boolean);
-  if(!lines.length){toast('Noch nichts aufgeschrieben');return}
+  const ls=lines(S.draft);
+  if(!ls.length){toast('Noch nichts aufgeschrieben');return}
   ovSet(false);
   const now=Date.now();
   S.items.forEach(i=>{if(i.status==='unsorted')i.status='open'});
-  const fresh=lines.map((t,k)=>({id:uid(),text:t,created:now+k,status:'unsorted',mark:null,lists:[]}));
+  const fresh=ls.map((t,k)=>({id:uid(),text:t,created:now+k,status:'unsorted',lists:[],steps:[]}));
   S.items.push(...fresh);
-  S.batch=fresh.map(i=>i.id);S.undo=[];S.mode='dump';S.seen=[];
+  S.batch=fresh.map(i=>i.id);S.undo=[];S.mode='dump';S.seen=[];U.pickFor=null;
   S.draft='';U.timerEnd=null;S.tab='sort';save();render();
  },
- panel:el=>{const k=el.dataset.v;if(U.panel===k){U.panel=null}else{U.panel=k;startPick(k,U.planId&&find(U.planId))}vSort()},
- plan:el=>{U.planId=el.dataset.id;U.panel=null;U.open=null;U.confirm=null;S.tab='sort';save();render()},
- planBack:()=>{U.planId=null;U.panel=null;S.tab='lists';save();render()},
- unmark:()=>{const it=find(U.planId);if(it){it.mark=null;delete it.date;delete it.time;delete it.dur;delete it.next}U.planId=null;U.panel=null;S.tab='lists';save();render()},
- fullDone:el=>{const it=find(el.dataset.id);if(!it)return;it.status='done';it.doneAt=Date.now();U.open=null;save();render();toast('Erledigt. Ab ins Beweisglas.')},
- pick:el=>{const k=el.dataset.k;U.pick[k]=k==='dur'?Number(el.dataset.v):el.dataset.v;vSort()},
- saveCal:()=>{const it=curItem();if(!it)return;
-  if(!U.pick.date){toast('Bitte ein Datum wählen');return}
-  settle(it,U.panel);setTimeout(()=>{render();toast('Gespeichert, Kalender geöffnet')},60)},
- saveMark:()=>{const it=curItem();if(!it)return;
-  if(U.panel==='next'){U.pick.next=($('#nx').value||'').trim();if(!U.pick.next){toast('Schreib den ersten Schritt auf');return}}
-  else if(!U.pick.date){toast('Bitte ein Datum wählen');return}
-  settle(it,U.panel);render()},
- nomark:()=>{const it=curItem();if(!it)return;if(review())S.seen.push(it.id);else{it.status='open';it.mark=null}S.undo.push(it.id);U.panel=null;save();vSort()},
- review:()=>{S.mode='review';S.batch=sorted(unmarked()).map(i=>i.id);S.seen=[];S.undo=[];U.panel=null;save();vSort()},
- undo:()=>{const id=S.undo.pop();const it=find(id);if(it){if(review())S.seen=S.seen.filter(x=>x!==id);else it.status='unsorted';it.mark=null;delete it.date;delete it.time;delete it.dur;delete it.next}U.panel=null;save();vSort()},
+ tile:el=>{keep();const k=el.dataset.v;if(U.sel.has(k))U.sel.delete(k);else{U.sel.add(k);if(k==='steps')U.focusSteps=true}vSort()},
+ pick:el=>{keep();const k=el.dataset.k;U.pick[k]=k==='dur'?Number(el.dataset.v):el.dataset.v;vSort()},
+ plan:el=>{U.planId=el.dataset.id;U.pickFor=null;U.open=null;U.confirm=null;S.tab='sort';save();render()},
+ planBack:()=>{U.planId=null;U.pickFor=null;S.tab='lists';save();render()},
+ savePlan:()=>{const it=curItem();if(it&&settle(it))render()},
+ saveCal:(el,e)=>{const it=curItem();if(!it)return;if(!settle(it)){e.preventDefault();return}setTimeout(()=>{render();toast('Gespeichert, Kalender geöffnet')},60)},
+ nomark:()=>{const it=curItem();if(!it)return;S.undo.push({id:it.id,prev:JSON.parse(JSON.stringify(it))});if(review())S.seen.push(it.id);else it.status='open';U.pickFor=null;save();vSort()},
+ review:()=>{S.mode='review';S.batch=sorted(unmarked()).map(i=>i.id);S.seen=[];S.undo=[];U.pickFor=null;save();vSort()},
+ undo:()=>{const u=S.undo.pop();if(u){const k=S.items.findIndex(i=>i.id===u.id);if(k>=0)S.items[k]=u.prev;if(review())S.seen=S.seen.filter(x=>x!==u.id)}U.pickFor=null;save();vSort()},
  del:el=>{const id=el.dataset.id;
   if(S.tab!=='sort'&&U.confirm!==id){U.confirm=id;render();return}
-  S.items=S.items.filter(i=>i.id!==id);S.undo=S.undo.filter(x=>x!==id);U.confirm=null;U.open=null;U.panel=null;save();render()},
- strike:el=>{const it=find(el.dataset.id);if(!it)return;it.struck=!it.struck;if(!it.struck)delete it.struck;U.open=null;save();vLists()},
- finishItem:el=>{const it=find(el.dataset.id);if(it){complete(it);U.open=null;save();render()}},
- toggle:el=>{const it=find(el.dataset.id);if(!it)return;
-  if(it.kind==='step'){const p=find(it.parent);if(p&&p.status==='open'&&!p.mark){p.mark='next';p.next=it.text;delete p.replan}S.items=S.items.filter(x=>x.id!==it.id);U.open=null;save();render();return}
-  if(it.status==='done'){it.status='open';delete it.doneAt}else complete(it);
-  U.open=null;save();render()},
-
+  S.items=S.items.filter(i=>i.id!==id);S.undo=S.undo.filter(u=>u.id!==id);U.confirm=null;U.open=null;U.pickFor=null;save();render()},
+ strike:el=>{const t=find(el.dataset.id);if(!t)return;if(t.struck)delete t.struck;else t.struck=true;U.open=null;save();vLists()},
+ sstrike:el=>{const [t,s]=stepOf(el);if(!s)return;if(s.struck)delete s.struck;else s.struck=true;U.open=null;save();vLists()},
+ sreopen:el=>{const [t,s]=stepOf(el);if(!s)return;s.status='open';delete s.doneAt;delete s.auto;if(t.status==='done'){t.status='open';delete t.doneAt}save();render()},
+ reopen:el=>{const t=find(el.dataset.id);if(!t)return;t.status='open';delete t.doneAt;for(const s of t.steps)if(s.auto){s.status='open';delete s.doneAt;delete s.auto}save();render()},
+ finishItem:el=>{const t=find(el.dataset.id);if(t){completeTask(t);U.open=null;save();render()}},
+ exp:el=>{const id=el.dataset.id;S.exp=S.exp.includes(id)?S.exp.filter(x=>x!==id):S.exp.concat(id);if(U.addStep===id)U.addStep=null;save();vLists()},
+ addStep:el=>{U.addStep=el.dataset.id;U.stepFocus=true;vLists()},
  more:el=>{U.open=U.open===el.dataset.id?null:el.dataset.id;U.confirm=null;vLists()},
  list:el=>{S.cur=el.dataset.v;if(U.qaOpen)U.qaFocus=true;U.open=null;U.confirm=null;save();vLists()},
  qa:()=>{if(!U.qaOpen){U.qaOpen=true;U.qaFocus=true;vLists();return}
   const t=($('#qa').value||'').trim();if(!t){U.qaOpen=false;vLists();return}
-  const it={id:uid(),text:t,created:Date.now(),status:'open',mark:null,lists:[]};S.items.push(it);
+  const it={id:uid(),text:t,created:Date.now(),status:'open',lists:[],steps:[]};S.items.push(it);
   const L=S.lists.find(l=>l.id===S.cur);
-  if(L){if(L.max&&S.items.filter(i=>i.status==='open'&&i.lists.includes(L.id)).length>=L.max)toast(L.name+' ist voll, in der Masterliste gespeichert');else it.lists.push(L.id)}
+  if(L){if(L.max&&listCount(L)>=L.max)toast(L.name+' ist voll, in der Masterliste gespeichert');else it.lists.push(L.id)}
   U.qaFocus=true;save();vLists()},
  newList:()=>{U.newList=!U.newList;vLists()},
  mkList:()=>{const n=($('#nl').value||'').trim();if(!n){toast('Gib der Liste einen Namen');return}
   const id=uid();S.lists.push({id,name:n.slice(0,24)});S.cur=id;U.newList=false;save();vLists()},
  delList:()=>{if(U.confirm!=='list'){U.confirm='list';vLists();return}
-  const id=S.cur;S.lists=S.lists.filter(l=>l.id!==id);S.items.forEach(i=>i.lists=i.lists.filter(x=>x!==id));S.cur='master';U.confirm=null;save();vLists()},
- addTo:el=>{const it=find(el.dataset.id),L=S.lists.find(l=>l.id===el.dataset.v);if(!it||!L)return;
-  if(L.max&&S.items.filter(i=>i.status==='open'&&i.lists.includes(L.id)).length>=L.max){toast(L.name+' ist voll');return}
-  it.lists.push(L.id);U.open=null;save();vLists();if(S.cur==='master')toast('Zu '+L.name+' hinzugefügt')},
- rmFrom:el=>{const it=find(el.dataset.id);if(it)it.lists=it.lists.filter(x=>x!==S.cur);U.open=null;save();vLists()},
+  const id=S.cur;S.lists=S.lists.filter(l=>l.id!==id);S.items.forEach(i=>{i.lists=i.lists.filter(x=>x!==id);for(const s of i.steps||[])s.lists=s.lists.filter(x=>x!==id)});S.cur='master';U.confirm=null;save();vLists()},
+ addTo:el=>{const [t,s]=stepOf(el),L=S.lists.find(l=>l.id===el.dataset.v),o=s||t;if(!o||!L)return;
+  if(L.max&&listCount(L)>=L.max){toast(L.name+' ist voll');return}
+  if(!o.lists.includes(L.id))o.lists.push(L.id);U.open=null;save();vLists();if(S.cur==='master')toast('Zu '+L.name+' hinzugefügt')},
+ rmFrom:el=>{const [t,s]=stepOf(el),o=s||t;if(o)o.lists=o.lists.filter(x=>x!==S.cur);U.open=null;save();vLists()},
  timer:el=>{S.timer=Number(el.dataset.v);U.timerEnd=null;save();vOpt()},
- copy:async()=>{const data=JSON.stringify({v:1,items:S.items,lists:S.lists});
+ copy:async()=>{const data=JSON.stringify({v:2,items:S.items,lists:S.lists});
   try{await navigator.clipboard.writeText(data);toast('Sicherung kopiert')}catch(e){$('#imp').value=data;$('#imp').select();toast('Kopieren blockiert: Text ist markiert, bitte selbst kopieren')}},
  imp:()=>{try{const d=JSON.parse($('#imp').value);if(!Array.isArray(d.items)||!Array.isArray(d.lists))throw 0;
-  S.items=d.items;S.lists=d.lists.some(l=>l.id==='heute')?d.lists:[{id:'heute',name:'Heute',max:5}].concat(d.lists);save();toast('Wiederhergestellt');vOpt()}catch(e){toast('Das ist keine gültige Sicherung')}},
+  S.items=d.items;S.lists=d.lists.some(l=>l.id==='heute')?d.lists:[{id:'heute',name:'Heute',max:5}].concat(d.lists);migrate();save();toast('Wiederhergestellt');vOpt()}catch(e){toast('Das ist keine gültige Sicherung')}},
  wipe:()=>{if(U.confirm!=='wipe'){U.confirm='wipe';vOpt();return}S=fresh();S.tab='opt';U.confirm=null;save();render();toast('Alles gelöscht')}
 };
+function addStepNow(){const t=find(U.addStep),v=($('#ns').value||'').trim();if(!t)return;
+ if(!v){U.addStep=null;vLists();return}
+ t.steps.push({id:uid(),text:v,created:Date.now(),status:'open',lists:[]});t.edited=Date.now();U.stepFocus=true;save();vLists()}
 document.addEventListener('click',e=>{if(swallow){e.preventDefault();return}const el=e.target.closest('[data-act]');if(!el||el.disabled)return;const f=A[el.dataset.act];if(f)f(el,e)});
-document.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.pick;if(k){U.pick[k]=e.target.value;vSort()}});
+document.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.pick;if(k){keep();U.pick[k]=e.target.value;vSort()}});
 document.addEventListener('keydown',e=>{if(e.key!=='Enter')return;
- if(e.target.id==='nx'){e.preventDefault();A.saveMark()}
  if(e.target.id==='nl'){e.preventDefault();A.mkList()}
- if(e.target.id==='qa'){e.preventDefault();A.qa()}});
+ if(e.target.id==='qa'){e.preventDefault();A.qa()}
+ if(e.target.id==='ns'){e.preventDefault();addStepNow()}});
 render();
 if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{})}
 }
