@@ -135,6 +135,7 @@ const KEY='braindump-v1';
 const fresh=()=>({items:[],lists:[{id:'heute',name:'Heute',max:5}],draft:'',tab:'dump',cur:'master',mode:'dump',seen:[],timer:5,batch:[],undo:[]});
 let S;try{S=Object.assign(fresh(),JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){S=fresh()}
 S.lists.forEach(l=>{if(l.id==='heute'&&l.name==='HEUTE')l.name='Heute'});delete S.look;
+S.tab='dump';
 if(!Array.isArray(S.seen))S.seen=[];if(!S.mode)S.mode='dump';
 S.items.forEach(i=>{if(i.status==='unsorted'&&!S.batch.includes(i.id))i.status='open'});
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
@@ -346,7 +347,6 @@ function vDone(){
   list+=`<div class="row"><button class="cb on" data-act="toggle" data-id="${i.id}" aria-label="Zurückholen">${I.check()}</button><span class="rt">${esc(i.text)}${i.kind==='step'?`<span class="sub">Schritt zu: ${esc(i.of)}</span>`:''}</span><span class="d">${pad(t.getHours())}:${pad(t.getMinutes())}</span></div>`}
  if(last)list+='</div>';
  page('Erledigt',`<div class="big"><b>${wk}</b><span>diese Woche erledigt</span></div>
-  <p class="quote">Dein Beweisglas. Lies drei davon, bevor du etwas Schweres anfängst.</p>
   <div>${list||'<p class="empty">Hier landet alles, was du abhakst.</p>'}</div>`);
 }
 
